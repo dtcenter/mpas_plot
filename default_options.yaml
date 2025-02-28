@@ -67,9 +67,12 @@ plot:
   # The image format of the output, if not specified in the filename. See matplotlib documentation for valid options:
   # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html#matplotlib.pyplot.savefig
   # 
+  # Settings controlling the title of the output plot(s) that will appear in the image above the plotted data.
   # title:
-  # The title of the output plot(s) that will appear in the image above the plotted data. To create
-  # a plot with no title, set this to a blank string.
+      # Text of the title. To create a plot with no title, set "text" to a blank string.
+      text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+      # Font size to use for the title.
+      fontsize: 8
   #
   # exists:
   # Handle case when file exists. Valid options are
@@ -117,7 +120,9 @@ plot:
 
   filename: '{var}_{lev}.png'
   format: null
-  title: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+  title:
+    text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+    fontsize: 8
   exists: rename
   latrange:
     - -90
@@ -159,7 +164,10 @@ plot:
     #
     # label:
     # Text to tabel colorbar; can use variables described at start of "plot:" section
+    #
+    # fontsize:
+    # Font size for the colobar label.
 
     orientation: vertical
     label: 'Units: {units}'
-
+    fontsize: 8

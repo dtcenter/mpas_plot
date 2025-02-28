@@ -273,15 +273,16 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
 
                 coll = ax.add_collection(pc)
 
-                plottitle=config_d["plot"]["title"].format_map(patterns)
-                plt.title(plottitle, wrap=True)
+                plottitle=config_d["plot"]["title"]["text"].format_map(patterns)
+                plt.title(plottitle, wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
 
                 # Handle colorbar
                 if config_d["plot"].get("colorbar"):
                     cb = config_d["plot"]["colorbar"]
                     cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
                     if cb.get("label"):
-                        cbar.set_label(cb["label"].format_map(patterns))
+                        cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
+                        cbar.ax.tick_params(labelsize=cb["fontsize"])
 
                 # Make sure any subdirectories exist before we try to write the file
                 if os.path.dirname(outfile):
