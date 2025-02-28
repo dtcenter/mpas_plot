@@ -209,9 +209,9 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 validfmts=fig.canvas.get_supported_filetypes()
                 outfile=config_d['plot']['filename']
                 if "." in os.path.basename(outfile):
-                    #output filename minus extension
-                    outfnme=os.path.splitext(outfile)[:-1]
-                    fmt=os.path.splitext(outfile)[-1]
+                    #output filename and extension
+                    outfnme,fmt=os.path.splitext(outfile)
+                    fmt=fmt[1:]
                     if config_d["plot"]["format"] is not None:
                         if fmt != config_d["plot"]["format"]:
                             raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
