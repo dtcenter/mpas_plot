@@ -16,7 +16,9 @@ plot:
   # {time} = The time of plotted data, in %H:%M:%S format
 
   filename: '{var}_{lev}.png'
-  title: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+  title:
+    text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+    fontsize: 8
   latrange:
     - 10
     - 45
@@ -26,6 +28,7 @@ plot:
   colorbar:
     orientation: vertical
     label: 'Units: {units}'
+    fontsize: 8
   # Colormap for output from Matplotlib. Reference: https://matplotlib.org/stable/gallery/color/colormap_reference.html
   colormap: "viridis"
   dpi: 300
