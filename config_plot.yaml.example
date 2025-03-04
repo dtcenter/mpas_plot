@@ -15,7 +15,7 @@ plot:
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: '{var}_{lev}.png'
+  filename: '{var}_{lev}'
   title: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
   latrange:
     - 10
