@@ -177,6 +177,9 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 pc.set_cmap(config_d["plot"]["colormap"])
                 pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
+                pc.set_edgecolor('black')
+                pc.set_linewidth(.1)
+
                 fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
                                        config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
                                        constrained_layout=True,
