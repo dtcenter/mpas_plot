@@ -94,6 +94,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
     fnme=os.path.splitext(filename)[0]
 
     logging.debug(f"Available data variables:\n{list(uxds.data_vars.keys())}")
+
     # To plot all variables, call plotit() recursively, trapping errors
     if config_d["data"]["var"]=="all":
         args = []
@@ -127,8 +128,12 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
             for instance in args:
                 plotitparallel(*args[i])
                 i+=1
-
-    elif isinstance(config_d["data"]["var"], list):
+    else:
+        # Convert variables that may be a list into one if they aren't already
+        if not isinstance(config_d["data"]["var"], list):
+            config_d["data"]["var"] = [ config_d["data"]["var"] ]
+        if not isinstance(config_d["data"]["lev"], list):
+            config_d["data"]["lev"] = [ config_d["data"]["lev"] ]
         for var in config_d["data"]["var"]:
             plotstart = time.time()
             if var not in list(uxds.data_vars.keys()):
@@ -137,6 +142,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
             logging.info(f"Plotting variable {var}")
             logging.debug(f"{uxds[var]=}")
             field=uxds[var]
+
             # If multiple timesteps in a file, only plot the first for now
             if "Time" in field.dims:
                 logging.info("Plotting first time step")
@@ -239,17 +245,16 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                     "filename": filename,
                     "fnme": fnme,
                 }
-                if "Time" in field.dims:
+                if field.coords.get("Time"):
                     patterns.update({
-                        "date": field.coords['Time'].dt.strftime('%Y-%m-%d').values[0],
-                        "time": field.coords['Time'].dt.strftime('%H:%M:%S').values[0]
+                        "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
+                        "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
                     })
                 else:
                     patterns.update({
                         "date": "no_Time_dimension",
                         "time": "no_Time_dimension"
                     })
-
 
                 # Check if the file already exists, if so act according to plot:exists setting
                 outfnme=outfnme.format_map(patterns)
@@ -273,8 +278,10 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
 
                 coll = ax.add_collection(pc)
 
-                plottitle=config_d["plot"]["title"]["text"].format_map(patterns)
-                plt.title(plottitle, wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
+                if plottitle:=config_d["plot"]["title"].get("text"):
+                    plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
+                else:
+                    logging.warning("No text field for title specified, creating plot with no title")
 
                 # Handle colorbar
                 if config_d["plot"].get("colorbar"):
@@ -292,9 +299,6 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 plt.close(fig)
                 logging.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
 
-
-    else:
-        raise ValueError('Config value data:var must either be a list of variable names or the literal string "all"')
 
 
 def setup_logging(logfile: str = "log.generate_FV3LAM_wflow", debug: bool = False) -> logging.Logger:
