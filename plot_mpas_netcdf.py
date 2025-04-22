@@ -276,6 +276,9 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                     else:
                         raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
 
+                pc.set_edgecolor(config_d['plot']['edges']['color'])
+                pc.set_linewidth(config_d['plot']['edges']['width'])
+
                 coll = ax.add_collection(pc)
 
                 if plottitle:=config_d["plot"]["title"].get("text"):
