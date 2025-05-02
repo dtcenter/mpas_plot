@@ -25,6 +25,9 @@ plot:
   lonrange:
     - -110
     - -30
+  edges:
+    color: black
+    width: 0.1
   colorbar:
     orientation: vertical
     label: 'Units: {units}'

@@ -139,6 +139,12 @@ plot:
   vmin: null
   vmax: null
 
+  # Settings for plotting grid cell borders. To disable cell borders, set color="face" (colors the border the same as cell face)
+  # or set width=0
+  edges:
+    color: face
+    width: 0.1
+
   # Settings for plotting political boundaries. To disable political boundaries, specify "boundaries:" with no options
   boundaries:
     # Level of political boundaries to plot. Level 0 is national boundaries, Level 1 is sub-national boundaries (e.g.

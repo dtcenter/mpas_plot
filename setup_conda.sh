@@ -9,7 +9,7 @@ if [ ! -d "${CONDA_BUILD_DIR}" ] ; then
   installer=Miniforge3-${os}-${hardware}.sh
   curl -L -O "https://github.com/conda-forge/miniforge/releases/download/23.3.1-1/${installer}"
   bash ./${installer} -bfp "${CONDA_BUILD_DIR}"
-  rm ${installer}
+  rm -f ${installer}
 fi
 
 . ${CONDA_BUILD_DIR}/etc/profile.d/conda.sh
