@@ -177,3 +177,8 @@ plot:
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8
+
+  # Settings for the output map projection:
+  projection:
+    # Name of the actual projection; valid options are PlateCarree, Mercator
+    projection: PlateCarree
