@@ -5,7 +5,9 @@ Script for plotting MPAS input and/or output in native NetCDF format"
 import argparse
 import copy
 import glob
+import inspect
 import logging
+import math
 import os
 import sys
 import time
@@ -192,7 +194,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                                        subplot_kw=dict(projection=proj))
 
 
-                ax.set_extent([config_d["plot"]["lonrange"][0], config_d["plot"]["lonrange"][1], config_d["plot"]["latrange"][0], config_d["plot"]["latrange"][1]], crs=ccrs.PlateCarree())
+                ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 #                ax.set_xlim((config_d["plot"]["lonrange"][0],config_d["plot"]["lonrange"][1]))
 #                ax.set_ylim((config_d["plot"]["latrange"][0],config_d["plot"]["latrange"][1]))
 
@@ -284,6 +286,8 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                 pc.set_linewidth(config_d['plot']['edges']['width'])
 
                 logger.debug("Adding collection to plot axes")
+                if config_d["plot"]["projection"] != "PlateCarree":
+                    logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
                 coll = ax.add_collection(pc)
 
                 logger.debug("Configuring plot title")
@@ -316,17 +320,58 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
     specified.
     """
 
-    validprojs = ["PlateCarree", "Mercator"]
+    # Set some short var names
     proj=confproj["projection"]
-    if proj == validprojs[0]:
-        logger.debug(f"Setting up PlateCarree projection")
-        return ccrs.PlateCarree()
-    if proj == validprojs[1]:
-        logger.debug(f"Setting up Mercator projection")
-        return ccrs.Mercator()
+    clat=confproj["central_lat"]
+    clon=confproj["central_lon"]
+    lat0=confproj["latrange"][0]
+    lat1=confproj["latrange"][1]
+    lon0=confproj["lonrange"][0]
+    lon1=confproj["lonrange"][1]
 
-    else:
-        raise ValueError(f"Invalid projection {proj} specified; valid options are {validprojs}")
+    # If projection parameters are unset, set some sane defaults
+    if clon is None:
+        if lon0<lon1:
+            clon = (lon0+lon1)/2
+        else:
+            clon = (lon0+lon1+360)/2
+            if clon>180:
+                clon = clon-360
+    if clat is None:
+        clat = (lat0+lat1)/2
+
+    # Get all projection names and classes from cartopy.crs
+    projection_dict = {}
+    for pname, pcls in vars(ccrs).items():
+        if inspect.isclass(pcls) and issubclass(pcls, ccrs.Projection) and pcls is not ccrs.Projection:
+
+            if pname in ["AlbersEqualArea","AzimuthalEquidistant","EquidistantConic","Gnomonic","LambertAzimuthalEqualArea","NearsidePerspective","ObliqueMercator","Stereographic","TransverseMercator"]:
+                projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
+            elif pname in ["Aitoff","EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Geostationary","Hammer","Mollweide","NorthPolarStereo","Robinson","Sinusoidal","SouthPolarStereo"]:
+                if pname == proj:
+                    if clon == confproj["central_lat"] is not None:
+                        logger.info(f"{proj} does not use central_lat; ignoring")
+                projection_dict[pname] = pcls(central_longitude=clon)
+            else:
+                # Handle projections that require no args
+                try:
+                    if pname == proj:
+                        if clon == confproj["central_lat"] is not None:
+                            logger.info(f"{proj} does not use central_lat; ignoring")
+                        if clon == confproj["central_lon"] is not None:
+                            logger.info(f"{proj} does not use central_lon; ignoring")
+
+                    projection_dict[pname] = pcls()  # Instantiate with default args
+                except (TypeError,AttributeError):
+                    # Skip non-projections, like base classes for other projections
+                    continue
+
+    for valid in projection_dict:
+        if proj == valid:
+            logger.debug(f"Setting up {valid} projection")
+            return projection_dict[valid]
+
+    raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{list(projection_dict.keys())}")
 
 def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> logging.Logger:
     """
@@ -349,7 +394,7 @@ def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> loggin
         console.setLevel(logging.INFO)
     fh.setLevel(logging.DEBUG)  # Log DEBUG and above to the file
 
-    formatter = logging.Formatter("%(asctime)s %(funcName)-16s %(levelname)-8s %(message)s")
+    formatter = logging.Formatter("%(asctime)s %(funcName)-16s %(levelname)-8s %(message)s", "%Y-%m-%d %H:%M:%S")
 
     # Set format for file handler
     fh = logging.FileHandler(logfile, mode='w')
@@ -400,6 +445,12 @@ def setup_config(logger: logging.Logger, config: str, default: str="default_opti
     if not expt_config["data"].get("lev"):
         logger.debug("Level not specified in config, will use level 0 if multiple found")
         expt_config["data"]["lev"]=0
+
+    # Check for old dictionary formats/deprecated options
+    if expt_config["plot"].get("latrange") or expt_config["plot"].get("lonrange"):
+        raise TypeError("plot:latrange and plot:lonrange have been moved to\n"\
+                       "plot:projection:latrange and plot:projection:lonrange respectively\n"\
+                       "Adjust your config.yaml accordingly.")
 
     logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()
