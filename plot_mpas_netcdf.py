@@ -7,7 +7,6 @@ import copy
 import glob
 import inspect
 import logging
-import math
 import os
 import sys
 import time
@@ -68,7 +67,7 @@ def plotitparallel(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepa
 
     logger.debug(f'Trying to plot level {newconf["data"]["lev"]} for variable {newconf["data"]["var"]}')
     try:
-        plotit(newconf,uxds,grid,filepath,1)
+        plotit(logger,newconf,uxds,grid,filepath,1)
     except Exception as e:
         logger.warning(f'Could not plot variable {newconf["data"]["var"]}, level {newconf["data"]["lev"]}')
         logger.warning(f"{traceback.print_tb(e.__traceback__)}:")
@@ -98,7 +97,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
     logger.debug(f"Available data variables:\n{list(uxds.data_vars.keys())}")
 
     # To plot all variables, call plotit() recursively, trapping errors
-    if config_d["data"]["var"]=="all":
+    if config_d["data"]["var"]=="all" or config_d["data"]["var"]==["all"]:
         args = []
         for var in uxds:
             # Create argument tuples for each call to plotit() for use with starmap
@@ -113,15 +112,17 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                 plotitparallel(*args[i])
                 i+=1
     # To plot all levels, call plotit() recursively, trapping errors
-    elif config_d["data"]["lev"]=="all":
+    elif config_d["data"]["lev"]=="all" or config_d["data"]["lev"]==["all"]:
         args = []
         if "nVertLevels" in uxds[config_d["data"]["var"]].dims:
             levs = range(0,len(uxds[config_d["data"]["var"]]["nVertLevels"]))
         else:
+            logger.debug(f"{uxds[config_d['data']['var']].dims}\nVertical levels not found in file; plotting level 0")
+
             levs = [0]
         for lev in levs:
             # Create argument tuples for each call to plotit() for use with starmap
-            args.append(logger,config_d,uxds,grid,filepath,config_d["data"]["var"],[lev])
+            args.append( (logger,config_d,uxds,grid,filepath,config_d["data"]["var"],[lev]) )
         if parproc > 1:
             with Pool(processes=parproc) as pool:
                 pool.starmap(plotitparallel, args)
@@ -194,9 +195,11 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                                        subplot_kw=dict(projection=proj))
 
 
+#                print(config_d["plot"]["projection"])
+#                print(f'ax.set_extent([{config_d["plot"]["projection"]["lonrange"][0]}, {config_d["plot"]["projection"]["lonrange"][1]}, {config_d["plot"]["projection"]["latrange"][0]}, {config_d["plot"]["projection"]["latrange"][1]}], crs=ccrs.PlateCarree())')
                 ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
-#                ax.set_xlim((config_d["plot"]["lonrange"][0],config_d["plot"]["lonrange"][1]))
-#                ax.set_ylim((config_d["plot"]["latrange"][0],config_d["plot"]["latrange"][1]))
+#                ax.set_xlim((config_d["plot"]["projection"]["lonrange"][0],config_d["plot"]["projection"]["lonrange"][1]))
+#                ax.set_ylim((config_d["plot"]["projection"]["latrange"][0],config_d["plot"]["projection"]["latrange"][1]))
 
                 #Plot coastlines if requested
                 if config_d["plot"]["coastlines"]:
@@ -286,7 +289,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                 pc.set_linewidth(config_d['plot']['edges']['width'])
 
                 logger.debug("Adding collection to plot axes")
-                if config_d["plot"]["projection"] != "PlateCarree":
+                if config_d["plot"]["projection"]["projection"] != "PlateCarree":
                     logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
                 coll = ax.add_collection(pc)
 
@@ -319,6 +322,28 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
     settings for the desired map projection. Raises descriptive exception if invalid settings are
     specified.
     """
+
+    proj=confproj["projection"]
+
+    # Some projections have limits on the range that can be plotted
+    if proj in ["Mercator","Miller","Mollweide","TransverseMercator"]:
+        if confproj["latrange"][0]<-80:
+            logger.warning(f"{proj} can not be plotted near poles, capping south latitude at -80˚")
+            confproj["latrange"][0]=-79.999
+        if confproj["latrange"][1]>80:
+            logger.warning(f"{proj} can not be plotted near poles, capping north latitude at 80˚")
+            confproj["latrange"][1]=80
+    if proj in ["EquidistantConic","NorthPolarStereo","Sinusoidal","Stereographic","SouthPolarStereo"]:
+        if confproj["lonrange"][1]-confproj["lonrange"][0] > 270:
+            raise ValueError(f"{proj} projection limited to showing 3/4 of sphere\n"\
+                              "change plot:projection:lonrange to a smaller range")
+    if proj in ["AlbersEqualArea","AzimuthalEquidistant","Gnomonic","Orthographic","Geostationary","LambertConformal","NearsidePerspective"]:
+        if confproj["latrange"][1]-confproj["latrange"][0] > 179:
+            raise ValueError(f"{proj} projection limited to less than one hemisphere\n"\
+                              "change plot:projection:latrange to a smaller range")
+        if confproj["lonrange"][1]-confproj["lonrange"][0] > 179:
+            raise ValueError(f"{proj} projection limited to less than one hemisphere\n"\
+                              "change plot:projection:lonrange to a smaller range")
 
     # Set some short var names
     proj=confproj["projection"]
@@ -450,7 +475,11 @@ def setup_config(logger: logging.Logger, config: str, default: str="default_opti
     if expt_config["plot"].get("latrange") or expt_config["plot"].get("lonrange"):
         raise TypeError("plot:latrange and plot:lonrange have been moved to\n"\
                        "plot:projection:latrange and plot:projection:lonrange respectively\n"\
-                       "Adjust your config.yaml accordingly.")
+                       "Adjust your config.yaml accordingly. See default_options.yaml for details.")
+
+    if isinstance(expt_config["plot"]["title"],str):
+        raise TypeError("plot:title should be a dictionary, not a string\n"\
+                        "Adjust your config.yaml accordingly. See default_options.yaml for details.")
 
     logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()
