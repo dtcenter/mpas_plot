@@ -167,11 +167,11 @@ plot:
     projection: PlateCarree
     # Range of latitudes/longitudes to plot. Each should be a 2-element list, with the first entry being less than the second
     latrange:
-      - -90
-      - 90
+      - null
+      - null
     lonrange:
-      - -180
-      - 180
+      - null
+      - null
     # Central lat/lon; needed to center the projection for AlbersEqualArea, AzimuthalEquidistant 
     central_lat: null
     central_lon: null
