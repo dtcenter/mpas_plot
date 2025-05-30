@@ -131,8 +131,12 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
             for instance in args:
                 plotitparallel(*args[i])
                 i+=1
-
-    elif isinstance(config_d["data"]["var"], list):
+    else:
+        # Convert variables that may be a list into one if they aren't already
+        if not isinstance(config_d["data"]["var"], list):
+            config_d["data"]["var"] = [ config_d["data"]["var"] ]
+        if not isinstance(config_d["data"]["lev"], list):
+            config_d["data"]["lev"] = [ config_d["data"]["lev"] ]
         for var in config_d["data"]["var"]:
             plotstart = time.time()
             if var not in list(uxds.data_vars.keys()):
@@ -256,10 +260,10 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                     "fnme": fnme,
                     "proj": config_d["plot"]["projection"]["projection"],
                 }
-                if "Time" in field.dims:
+                if field.coords.get("Time"):
                     patterns.update({
-                        "date": field.coords['Time'].dt.strftime('%Y-%m-%d').values[0],
-                        "time": field.coords['Time'].dt.strftime('%H:%M:%S').values[0]
+                        "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
+                        "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
                     })
                 else:
                     patterns.update({
@@ -323,9 +327,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                 plt.close(fig)
                 logger.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
 
-
-    else:
-        raise ValueError('Config value data:var must either be a list of variable names or the literal string "all"')
 
 def set_map_projection(logger,confproj) -> ccrs.Projection:
     """
