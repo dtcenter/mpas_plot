@@ -177,14 +177,18 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 pc.set_cmap(config_d["plot"]["colormap"])
                 pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
+                # Set projection properties
+                proj=set_map_projection(config_d["plot"]["projection"])
+
                 fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
                                        config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
                                        constrained_layout=True,
-                                       subplot_kw=dict(projection=ccrs.PlateCarree()))
+                                       subplot_kw=dict(projection=proj))
 
 
-                ax.set_xlim((config_d["plot"]["lonrange"][0],config_d["plot"]["lonrange"][1]))
-                ax.set_ylim((config_d["plot"]["latrange"][0],config_d["plot"]["latrange"][1]))
+                ax.set_extent([config_d["plot"]["lonrange"][0], config_d["plot"]["lonrange"][1], config_d["plot"]["latrange"][0], config_d["plot"]["latrange"][1]], crs=ccrs.PlateCarree())
+#                ax.set_xlim((config_d["plot"]["lonrange"][0],config_d["plot"]["lonrange"][1]))
+#                ax.set_ylim((config_d["plot"]["latrange"][0],config_d["plot"]["latrange"][1]))
 
                 #Plot coastlines if requested
                 if config_d["plot"]["coastlines"]:
@@ -270,6 +274,8 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                         logging.info(f"Saving to {outfile} instead")
                     else:
                         raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
+                else:
+                    logging.info(f"Saving {outfile}")
 
                 coll = ax.add_collection(pc)
 
@@ -296,8 +302,26 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
     else:
         raise ValueError('Config value data:var must either be a list of variable names or the literal string "all"')
 
+def set_map_projection(confproj) -> ccrs.Projection:
+    """
+    Creates and returns a map projection based on the dictionary confproj, which contains the user
+    settings for the desired map projection. Raises descriptive exception if invalid settings are
+    specified.
+    """
 
-def setup_logging(logfile: str = "log.generate_FV3LAM_wflow", debug: bool = False) -> logging.Logger:
+    validprojs = ["PlateCarree", "Mercator"]
+    proj=confproj["projection"]
+    if proj == validprojs[0]:
+        logging.debug(f"Setting up PlateCarree projection")
+        return ccrs.PlateCarree()
+    if proj == validprojs[1]:
+        logging.debug(f"Setting up Mercator projection")
+        return ccrs.Mercator()
+
+    else:
+        raise ValueError(f"Invalid projection {proj} specified; valid options are {validprojs}")
+
+def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> logging.Logger:
     """
     Sets up logging, printing high-priority (INFO and higher) messages to screen, and printing all
     messages with detailed timing and routine info in the specified text file.
