@@ -162,6 +162,11 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                 for lev in levs:
                     sliced[lev]=field.isel(nVertLevels=lev)
             else:
+                if len(config_d["data"]["lev"])>1:
+                    logger.warning(f"{var} has no vertical dimension; only plotting one level")
+                elif config_d["data"]["lev"][0]>0:
+                    logger.warning(f"{var} has no vertical dimension; can not plot level {config_d['data']['lev'][0]} > 0")
+                    continue
                 levs = [0]
                 sliced[0]=field
 
@@ -195,11 +200,12 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                                        subplot_kw=dict(projection=proj))
 
 
-#                print(config_d["plot"]["projection"])
-#                print(f'ax.set_extent([{config_d["plot"]["projection"]["lonrange"][0]}, {config_d["plot"]["projection"]["lonrange"][1]}, {config_d["plot"]["projection"]["latrange"][0]}, {config_d["plot"]["projection"]["latrange"][1]}], crs=ccrs.PlateCarree())')
-                ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
-#                ax.set_xlim((config_d["plot"]["projection"]["lonrange"][0],config_d["plot"]["projection"]["lonrange"][1]))
-#                ax.set_ylim((config_d["plot"]["projection"]["latrange"][0],config_d["plot"]["projection"]["latrange"][1]))
+                logger.debug(config_d["plot"]["projection"])
+                logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
+                if None in config_d["plot"]["projection"]["lonrange"] or config_d["plot"]["projection"]["latrange"]:
+                    logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+                else:
+                    ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
                 #Plot coastlines if requested
                 if config_d["plot"]["coastlines"]:
@@ -253,6 +259,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                     "varln": field.attrs["long_name"],
                     "filename": filename,
                     "fnme": fnme,
+                    "proj": config_d["plot"]["projection"]["projection"],
                 }
                 if field.coords.get("Time"):
                     patterns.update({
@@ -287,11 +294,16 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
 
                 pc.set_edgecolor(config_d['plot']['edges']['color'])
                 pc.set_linewidth(config_d['plot']['edges']['width'])
+                pc.set_transform(ccrs.PlateCarree())
 
                 logger.debug("Adding collection to plot axes")
                 if config_d["plot"]["projection"]["projection"] != "PlateCarree":
                     logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
-                coll = ax.add_collection(pc)
+                if None in config_d["plot"]["projection"]["lonrange"] or config_d["plot"]["projection"]["latrange"]:
+                    coll = ax.add_collection(pc, autolim=True)
+                    ax.autoscale()
+                else:
+                    coll = ax.add_collection(pc)
 
                 logger.debug("Configuring plot title")
                 if plottitle:=config_d["plot"]["title"].get("text"):
@@ -325,25 +337,38 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
 
     proj=confproj["projection"]
 
-    # Some projections have limits on the range that can be plotted
-    if proj in ["Mercator","Miller","Mollweide","TransverseMercator"]:
-        if confproj["latrange"][0]<-80:
-            logger.warning(f"{proj} can not be plotted near poles, capping south latitude at -80˚")
-            confproj["latrange"][0]=-79.999
-        if confproj["latrange"][1]>80:
-            logger.warning(f"{proj} can not be plotted near poles, capping north latitude at 80˚")
-            confproj["latrange"][1]=80
-    if proj in ["EquidistantConic","NorthPolarStereo","Sinusoidal","Stereographic","SouthPolarStereo"]:
-        if confproj["lonrange"][1]-confproj["lonrange"][0] > 270:
-            raise ValueError(f"{proj} projection limited to showing 3/4 of sphere\n"\
-                              "change plot:projection:lonrange to a smaller range")
-    if proj in ["AlbersEqualArea","AzimuthalEquidistant","Gnomonic","Orthographic","Geostationary","LambertConformal","NearsidePerspective"]:
-        if confproj["latrange"][1]-confproj["latrange"][0] > 179:
-            raise ValueError(f"{proj} projection limited to less than one hemisphere\n"\
-                              "change plot:projection:latrange to a smaller range")
-        if confproj["lonrange"][1]-confproj["lonrange"][0] > 179:
-            raise ValueError(f"{proj} projection limited to less than one hemisphere\n"\
-                              "change plot:projection:lonrange to a smaller range")
+    # Some projections have limits on the lat/lon range that can be plotted when specifying a map subset
+    if not ( None in confproj['latrange']):
+        if proj in ["Mercator","Miller","Mollweide","TransverseMercator"]:
+            if confproj["latrange"][0]<-80:
+                logger.warning(f"{proj} can not be plotted near poles, capping south latitude at -80˚")
+                confproj["latrange"][0]=-79.999
+            if confproj["latrange"][1]>80:
+                logger.warning(f"{proj} can not be plotted near poles, capping north latitude at 80˚")
+                confproj["latrange"][1]=80
+        if proj in ["AlbersEqualArea","AzimuthalEquidistant","Gnomonic","Orthographic","Geostationary","LambertAzimuthalEqualArea","LambertConformal","NearsidePerspective","TransverseMercator"]:
+            if confproj["latrange"][1]-confproj["latrange"][0] > 179:
+                logger.debug(f"{confproj['latrange']=}")
+                raise ValueError(f"{proj} projection limited to less than one hemisphere\n"\
+                                  "change plot:projection:latrange to a smaller range")
+    if not ( None in confproj['lonrange']):
+        if proj in ["EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Mollweide","Sinusoidal"]:
+            if confproj["lonrange"][1]-confproj["lonrange"][0] > 359:
+                logger.warning(f"{proj} can not plot full globe, setting maximum longitude to minimum + 359˚")
+                confproj["lonrange"][1]=confproj["lonrange"][0] + 359
+        if proj in ["NorthPolarStereo","SouthPolarStereo","Stereographic"]:
+            if confproj["lonrange"][1]-confproj["lonrange"][0] > 340:
+                logger.warning(f"{proj} can not plot full globe, setting maximum longitude to minimum + 340˚")
+                confproj["lonrange"][1]=confproj["lonrange"][0] + 340
+        if proj in ["EquidistantConic"]:
+            if confproj["lonrange"][1]-confproj["lonrange"][0] > 270:
+                raise ValueError(f"{proj} projection limited to showing 3/4 of sphere\n"\
+                                  "change plot:projection:lonrange to a smaller range")
+        if proj in ["AlbersEqualArea","AzimuthalEquidistant","Gnomonic","Orthographic","Geostationary","LambertAzimuthalEqualArea","LambertConformal","NearsidePerspective","TransverseMercator"]:
+            if confproj["lonrange"][1]-confproj["lonrange"][0] > 179:
+                logger.debug(f"{confproj['lonrange']=}")
+                raise ValueError(f"{proj} projection limited to less than one hemisphere\n"\
+                                  "change plot:projection:lonrange to a smaller range")
 
     # Set some short var names
     proj=confproj["projection"]
@@ -356,14 +381,20 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
 
     # If projection parameters are unset, set some sane defaults
     if clon is None:
-        if lon0<lon1:
-            clon = (lon0+lon1)/2
+        if None in confproj['lonrange']:
+            clon = 0
         else:
-            clon = (lon0+lon1+360)/2
-            if clon>180:
-                clon = clon-360
+            if lon0<lon1:
+                clon = (lon0+lon1)/2
+            else:
+                clon = (lon0+lon1+360)/2
+                if clon>180:
+                    clon = clon-360
     if clat is None:
-        clat = (lat0+lat1)/2
+        if None in confproj['latrange']:
+            clat = 0
+        else:
+            clat = (lat0+lat1)/2
 
     # Get all projection names and classes from cartopy.crs
     projection_dict = {}
@@ -374,16 +405,16 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
                 projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
             elif pname in ["Aitoff","EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Geostationary","Hammer","Mollweide","NorthPolarStereo","Robinson","Sinusoidal","SouthPolarStereo"]:
                 if pname == proj:
-                    if clon == confproj["central_lat"] is not None:
+                    if confproj["central_lat"] is not None:
                         logger.info(f"{proj} does not use central_lat; ignoring")
                 projection_dict[pname] = pcls(central_longitude=clon)
             else:
                 # Handle projections that require no args
                 try:
                     if pname == proj:
-                        if clon == confproj["central_lat"] is not None:
+                        if confproj["central_lat"] is not None:
                             logger.info(f"{proj} does not use central_lat; ignoring")
-                        if clon == confproj["central_lon"] is not None:
+                        if confproj["central_lon"] is not None:
                             logger.info(f"{proj} does not use central_lon; ignoring")
 
                     projection_dict[pname] = pcls()  # Instantiate with default args
@@ -394,6 +425,7 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
     for valid in projection_dict:
         if proj == valid:
             logger.debug(f"Setting up {valid} projection")
+            logger.debug(f"{projection_dict[valid]=}\n{type(projection_dict[valid])}")
             return projection_dict[valid]
 
     raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{list(projection_dict.keys())}")
