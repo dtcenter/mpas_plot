@@ -25,22 +25,22 @@ import cartopy.crs as ccrs
 import uwtools.api.config as uwconfig
 
 
-def load_dataset(fn: str, gf: str = "") -> tuple[ux.UxDataset,ux.Grid]:
+def load_dataset(logger,fn: str, gf: str = "") -> tuple[ux.UxDataset,ux.Grid]:
     """
     Program loads the dataset from the specified MPAS NetCDF data file and grid file and returns
     ux.UxDataset and ux.Grid objects. If grid file not specified, it is assumed to be the same as
     the data file.
     """
 
-    logging.info(f"Reading data from {fn}")
+    logger.info(f"Reading data from {fn}")
     if gf:
-        logging.info(f"Reading grid from {gf}")
+        logger.info(f"Reading grid from {gf}")
     else:
         gf=fn
     return ux.open_dataset(gf,fn),ux.open_grid(gf)
 
 
-def plotitparallel(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,variable: list=[],level: list=[]) -> None:
+def plotitparallel(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,variable: list=[],level: list=[]) -> None:
     """
     The a wrapper for plotit() used for calling it recursively and in parallel with use of starmap
     Args:
@@ -64,18 +64,18 @@ def plotitparallel(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str
     if level:
         newconf["data"]["lev"]=level
 
-    logging.debug(f'Trying to plot level {newconf["data"]["lev"]} for variable {newconf["data"]["var"]}')
+    logger.debug(f'Trying to plot level {newconf["data"]["lev"]} for variable {newconf["data"]["var"]}')
     try:
         plotit(newconf,uxds,grid,filepath,1)
     except Exception as e:
-        logging.warning(f'Could not plot variable {newconf["data"]["var"]}, level {newconf["data"]["lev"]}')
-        logging.warning(f"{traceback.print_tb(e.__traceback__)}:")
-        logging.warning(f"{type(e).__name__}:")
-        logging.warning(e)
+        logger.warning(f'Could not plot variable {newconf["data"]["var"]}, level {newconf["data"]["lev"]}')
+        logger.warning(f"{traceback.print_tb(e.__traceback__)}:")
+        logger.warning(f"{type(e).__name__}:")
+        logger.warning(e)
 
 
 
-def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc: int) -> None:
+def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc: int) -> None:
     """
     The main program that makes the plot(s)
     Args:
@@ -93,13 +93,14 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
     #filename minus extension
     fnme=os.path.splitext(filename)[0]
 
-    logging.debug(f"Available data variables:\n{list(uxds.data_vars.keys())}")
+    logger.debug(f"Available data variables:\n{list(uxds.data_vars.keys())}")
+
     # To plot all variables, call plotit() recursively, trapping errors
     if config_d["data"]["var"]=="all":
         args = []
         for var in uxds:
             # Create argument tuples for each call to plotit() for use with starmap
-            args.append( (config_d,uxds,grid,filepath,[var]) )
+            args.append( (logger,config_d,uxds,grid,filepath,[var]) )
         if parproc > 1:
             with Pool(processes=parproc) as pool:
                 pool.starmap(plotitparallel, args)
@@ -118,7 +119,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
             levs = [0]
         for lev in levs:
             # Create argument tuples for each call to plotit() for use with starmap
-            args.append( (config_d,uxds,grid,filepath,config_d["data"]["var"],[lev]) )
+            args.append(logger,config_d,uxds,grid,filepath,config_d["data"]["var"],[lev])
         if parproc > 1:
             with Pool(processes=parproc) as pool:
                 pool.starmap(plotitparallel, args)
@@ -134,12 +135,12 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
             if var not in list(uxds.data_vars.keys()):
                 msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
                 raise ValueError(msg)
-            logging.info(f"Plotting variable {var}")
-            logging.debug(f"{uxds[var]=}")
+            logger.info(f"Plotting variable {var}")
+            logger.debug(f"{uxds[var]=}")
             field=uxds[var]
             # If multiple timesteps in a file, only plot the first for now
             if "Time" in field.dims:
-                logging.info("Plotting first time step")
+                logger.info("Plotting first time step")
                 field=field.isel(Time=0)
 
             # Parse multiple levels for 3d fields
@@ -149,7 +150,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
             if "nVertLevels" in field.dims:
                 if config_d["data"]["lev"]:
                     levs=config_d["data"]["lev"]
-                logging.info(f'Plotting vertical level(s) {levs}')
+                logger.info(f'Plotting vertical level(s) {levs}')
                 for lev in levs:
                     sliced[lev]=field.isel(nVertLevels=lev)
             else:
@@ -157,17 +158,17 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 sliced[0]=field
 
             for lev in levs:
-                logging.debug(f"For level {lev}, data slice to plot:\n{sliced[lev]}")
+                logger.debug(f"For level {lev}, data slice to plot:\n{sliced[lev]}")
 
                 if "n_face" not in field.dims:
-                    logging.warning(f"Variable {var} not face-centered, will interpolate to faces")
+                    logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
                     sliced[lev] = sliced[lev].remap.inverse_distance_weighted(grid,
                                                                       remap_to='face centers', k=3)
-                    logging.debug(f"Data slice after interpolation:\n{sliced[lev]=}")
+                    logger.debug(f"Data slice after interpolation:\n{sliced[lev]=}")
 
                 if config_d["plot"]["periodic_bdy"]:
-                    logging.info("Creating polycollection with periodic_bdy=True")
-                    logging.info("NOTE: This option can be very slow for large domains")
+                    logger.info("Creating polycollection with periodic_bdy=True")
+                    logger.info("NOTE: This option can be very slow for large domains")
                     pc=sliced[lev].to_polycollection(periodic_elements='split')
                 else:
                     pc=sliced[lev].to_polycollection()
@@ -178,7 +179,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
                 # Set projection properties
-                proj=set_map_projection(config_d["plot"]["projection"])
+                proj=set_map_projection(logger,config_d["plot"]["projection"])
 
                 fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
                                        config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
@@ -200,7 +201,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                     elif config_d["plot"]["boundaries"]["detail"]==1:
                         name='admin_1_states_provinces'
                     elif config_d["plot"]["boundaries"]["detail"]==2:
-                        logging.info("Counties only available at 10m resolution")
+                        logger.info("Counties only available at 10m resolution")
                         config_d["plot"]["boundaries"]["scale"]='10m'
                         name='admin_2_counties'
                     else:
@@ -226,7 +227,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                     if config_d["plot"]["format"] is not None:
                         fmt=config_d["plot"]["format"]
                     else:
-                        logging.warning("No output file format specified; defaulting to PNG")
+                        logger.warning("No output file format specified; defaulting to PNG")
                         fmt='png'
 
                 if fmt not in validfmts:
@@ -260,29 +261,34 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 outfile=f"{outfnme.format_map(patterns)}.{fmt}"
                 if os.path.isfile(outfile):
                     if config_d["plot"]["exists"]=="overwrite":
-                        logging.info(f"Overwriting existing file {outfile}")
+                        logger.info(f"Overwriting existing file {outfile}")
                     elif config_d["plot"]["exists"]=="abort":
                         raise FileExistsError(f"{outfile}\n"
                               "to change this behavior see plot:exists setting in config file")
                     elif config_d["plot"]["exists"]=="rename":
-                        logging.info(f"File exists: {outfile}")
+                        logger.info(f"File exists: {outfile}")
                         i=0
                         # I love when I get to use the walrus operator :D
                         while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
-                            logging.debug(f"File exists: {outfile}")
+                            logger.debug(f"File exists: {outfile}")
                             i+=1
-                        logging.info(f"Saving to {outfile} instead")
+                        logger.info(f"Saving to {outfile} instead")
                     else:
                         raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
-                else:
-                    logging.info(f"Saving {outfile}")
 
+                pc.set_edgecolor(config_d['plot']['edges']['color'])
+                pc.set_linewidth(config_d['plot']['edges']['width'])
+
+                logger.debug("Adding collection to plot axes")
                 coll = ax.add_collection(pc)
 
-                plottitle=config_d["plot"]["title"]["text"].format_map(patterns)
-                plt.title(plottitle, wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
+                logger.debug("Configuring plot title")
+                if plottitle:=config_d["plot"]["title"].get("text"):
+                    plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
+                else:
+                    logger.warning("No text field for title specified, creating plot with no title")
 
-                # Handle colorbar
+                logger.debug("Configuring plot colorbar")
                 if config_d["plot"].get("colorbar"):
                     cb = config_d["plot"]["colorbar"]
                     cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
@@ -293,16 +299,16 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,parproc
                 # Make sure any subdirectories exist before we try to write the file
                 if os.path.dirname(outfile):
                     os.makedirs(os.path.dirname(outfile),exist_ok=True)
-                logging.debug(f"Saving plot {outfile}")
+                logger.debug(f"Saving plot {outfile}")
                 plt.savefig(outfile,format=fmt)
                 plt.close(fig)
-                logging.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
+                logger.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
 
 
     else:
         raise ValueError('Config value data:var must either be a list of variable names or the literal string "all"')
 
-def set_map_projection(confproj) -> ccrs.Projection:
+def set_map_projection(logger,confproj) -> ccrs.Projection:
     """
     Creates and returns a map projection based on the dictionary confproj, which contains the user
     settings for the desired map projection. Raises descriptive exception if invalid settings are
@@ -312,10 +318,10 @@ def set_map_projection(confproj) -> ccrs.Projection:
     validprojs = ["PlateCarree", "Mercator"]
     proj=confproj["projection"]
     if proj == validprojs[0]:
-        logging.debug(f"Setting up PlateCarree projection")
+        logger.debug(f"Setting up PlateCarree projection")
         return ccrs.PlateCarree()
     if proj == validprojs[1]:
-        logging.debug(f"Setting up Mercator projection")
+        logger.debug(f"Setting up Mercator projection")
         return ccrs.Mercator()
 
     else:
@@ -342,7 +348,7 @@ def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> loggin
         console.setLevel(logging.INFO)
     fh.setLevel(logging.DEBUG)  # Log DEBUG and above to the file
 
-    formatter = logging.Formatter("%(name)-22s %(levelname)-8s %(message)s")
+    formatter = logging.Formatter("%(asctime)s %(funcName)-16s %(levelname)-8s %(message)s")
 
     # Set format for file handler
     fh = logging.FileHandler(logfile, mode='w')
@@ -357,7 +363,7 @@ def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> loggin
     return logger
 
 
-def setup_config(config: str, default: str="default_options.yaml") -> dict:
+def setup_config(logger: logging.Logger, config: str, default: str="default_options.yaml") -> dict:
     """
     Function for reading in dictionary of configuration settings, and performing basic checks
     on those settings
@@ -365,24 +371,25 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
     Args:
         config  (str) : The full path of the user config file
         default (str) : The full path of the default config file
-        debug   (bool): Enable extra output for debugging
+        logger        : logging.Logger object
+
     Returns:
         dict: A dictionary of the configuration settings after applying defaults and user settings,
               as well as some basic consistency checks
     """
-    logging.debug(f"Reading defaults file {default}")
+    logger.debug(f"Reading defaults file {default}")
     try:
         expt_config = uwconfig.get_yaml_config(config=default)
     except Exception as e:
-        logging.critical(e)
-        logging.critical(f"Error reading {config}, check above error trace for details")
+        logger.critical(e)
+        logger.critical(f"Error reading {config}, check above error trace for details")
         sys.exit(1)
-    logging.debug(f"Reading options file {config}")
+    logger.debug(f"Reading options file {config}")
     try:
         user_config = uwconfig.get_yaml_config(config=config)
     except Exception as e:
-        logging.critical(e)
-        logging.critical(f"Error reading {config}, check above error trace for details")
+        logger.critical(e)
+        logger.critical(f"Error reading {config}, check above error trace for details")
         sys.exit(1)
 
     # Update the dict read from defaults file with the dict read from user config file
@@ -390,16 +397,14 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
 
     # Perform consistency checks
     if not expt_config["data"].get("lev"):
-        logging.debug("Level not specified in config, will use level 0 if multiple found")
+        logger.debug("Level not specified in config, will use level 0 if multiple found")
         expt_config["data"]["lev"]=0
 
-    logging.debug("Expanding references to other variables and Jinja templates")
+    logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()
     return expt_config
 
 if __name__ == "__main__":
-
-    logging.basicConfig(level=logging.INFO)
 
     parser = argparse.ArgumentParser(
         description="Script for plotting MPAS input and/or output in native NetCDF format"
@@ -413,14 +418,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    else:
-        logging.getLogger().setLevel(logging.INFO)
+    logger=setup_logging(debug=args.debug)
 
 
     # Load settings from config file
-    expt_config=setup_config(args.config)
+    expt_config=setup_config(logger,args.config)
 
     if os.path.isfile(expt_config["data"]["filename"]):
         files = [expt_config["data"]["filename"]]
@@ -436,9 +438,9 @@ if __name__ == "__main__":
 
     for f in files:
         # Open specified file and load dataset
-        dataset,grid=load_dataset(f,expt_config["data"]["gridfile"])
+        dataset,grid=load_dataset(logger,f,expt_config["data"]["gridfile"])
 
-        logging.debug(f"{dataset=}")
-        logging.debug(f"{grid=}")
+        logger.debug(f"{dataset=}")
+        logger.debug(f"{grid=}")
         # Make the plots!
-        plotit(expt_config,dataset,grid,f,args.procs)
+        plotit(logger,expt_config,dataset,grid,f,args.procs)
