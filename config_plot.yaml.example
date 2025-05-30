@@ -19,12 +19,9 @@ plot:
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
-  latrange:
-    - 10
-    - 45
-  lonrange:
-    - -110
-    - -30
+  edges:
+    color: black
+    width: 0.1
   colorbar:
     orientation: vertical
     label: 'Units: {units}'
@@ -34,3 +31,12 @@ plot:
   dpi: 300
   figheight: 4
   figwidth: 8
+  projection:
+    projection: Mercator
+      latrange:
+        - 10
+        - 45
+      lonrange:
+        - -110
+        - -30
+
