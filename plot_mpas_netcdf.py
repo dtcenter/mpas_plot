@@ -202,7 +202,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
 
                 logger.debug(config_d["plot"]["projection"])
                 logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
-                if None in config_d["plot"]["projection"]["lonrange"] or config_d["plot"]["projection"]["latrange"]:
+                if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
                     logger.info('One or more latitude/longitude range values were not set; plotting full projection')
                 else:
                     ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
@@ -299,7 +299,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
                 logger.debug("Adding collection to plot axes")
                 if config_d["plot"]["projection"]["projection"] != "PlateCarree":
                     logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
-                if None in config_d["plot"]["projection"]["lonrange"] or config_d["plot"]["projection"]["latrange"]:
+                if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
                     coll = ax.add_collection(pc, autolim=True)
                     ax.autoscale()
                 else:
@@ -400,22 +400,53 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
     projection_dict = {}
     for pname, pcls in vars(ccrs).items():
         if inspect.isclass(pcls) and issubclass(pcls, ccrs.Projection) and pcls is not ccrs.Projection:
-
-            if pname in ["AlbersEqualArea","AzimuthalEquidistant","EquidistantConic","Gnomonic","LambertAzimuthalEqualArea","NearsidePerspective","ObliqueMercator","Stereographic","TransverseMercator"]:
-                projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
-            elif pname in ["Aitoff","EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Geostationary","Hammer","Mollweide","NorthPolarStereo","Robinson","Sinusoidal","SouthPolarStereo"]:
+            if pname in ["AlbersEqualArea","EquidistantConic","LambertConformal"]:
                 if pname == proj:
-                    if confproj["central_lat"] is not None:
-                        logger.info(f"{proj} does not use central_lat; ignoring")
+                    for setting in ["satellite_height"]:
+                        if confproj[setting] is not None:
+                            logger.info(f"{proj} does not use {setting}; ignoring")
+                if None in confproj["standard_parallels"]:
+                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
+                else:
+                    sp1,sp2=confproj["standard_parallels"]
+                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon,standard_parallels=(sp1, sp2))
+            elif pname in ["Geostationary"]:
+                if pname == proj:
+                    for setting in ["central_lat","standard_parallels"]:
+                        if confproj[setting] is not None:
+                            logger.info(f"{proj} does not use {setting}; ignoring")
+                if confproj["satellite_height"] is None:
+                    projection_dict[pname] = pcls(central_longitude=clon)
+                else:
+                    projection_dict[pname] = pcls(central_longitude=clon,satellite_height=confproj["satellite_height"])
+            elif pname in ["NearsidePerspective"]:
+                if pname == proj:
+                    for setting in ["standard_parallels"]:
+                        if confproj[setting] is not None:
+                            logger.info(f"{proj} does not use {setting}; ignoring")
+                if confproj["satellite_height"] is None:
+                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
+                else:
+                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon,satellite_height=confproj["satellite_height"])
+            elif pname in ["AzimuthalEquidistant","Gnomonic","LambertAzimuthalEqualArea","ObliqueMercator","Orthographic","Stereographic","TransverseMercator"]:
+                if pname == proj:
+                    for setting in ["satellite_height","standard_parallels"]:
+                        if confproj[setting] is not None:
+                            logger.info(f"{proj} does not use {setting}; ignoring")
+                projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
+            elif pname in ["Aitoff","EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Gnomonic","Hammer","InterruptedGoodeHomolosine","LambertCylindrical","Mercator","Miller","Mollweide","NorthPolarStereo","PlateCarree","Robinson","Sinusoidal","SouthPolarStereo"]:
+                if pname == proj:
+                    for setting in ["central_lat","satellite_height","standard_parallels"]:
+                        if confproj[setting] is not None:
+                            logger.info(f"{proj} does not use {setting}; ignoring")
                 projection_dict[pname] = pcls(central_longitude=clon)
             else:
                 # Handle projections that require no args
                 try:
                     if pname == proj:
-                        if confproj["central_lat"] is not None:
-                            logger.info(f"{proj} does not use central_lat; ignoring")
-                        if confproj["central_lon"] is not None:
-                            logger.info(f"{proj} does not use central_lon; ignoring")
+                        for setting in ["central_lat","central_lon","satellite_height","standard_parallels"]:
+                            if confproj[setting] is not None:
+                                logger.info(f"{proj} does not use {setting}; ignoring")
 
                     projection_dict[pname] = pcls()  # Instantiate with default args
                 except (TypeError,AttributeError):

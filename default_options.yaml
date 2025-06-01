@@ -178,7 +178,13 @@ plot:
     lonrange:
       - null
       - null
-    # Central lat/lon; needed to center the projection for AlbersEqualArea, AzimuthalEquidistant 
+    # Central lat/lon; needed to center the projection for some projections. If not supported, values will be ignored
     central_lat: null
     central_lon: null
+    # Satellite height (meters): used for Geostationary and NearsidePerspective projections that simulate a satellite view
+    satellite_height: null
+    # Standard parallels: used for setting projection parameters for AlbersEqualArea, EquidistantConic, and LambertConformal
+    standard_parallels:
+      - null
+      - null
 
