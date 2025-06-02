@@ -339,69 +339,59 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
             clat = (lat0+lat1)/2
 
     # Get all projection names and classes from cartopy.crs
-    projection_dict = {}
+    valid= []
     for pname, pcls in vars(ccrs).items():
         if inspect.isclass(pcls) and issubclass(pcls, ccrs.Projection) and pcls is not ccrs.Projection:
-            if pname in ["AlbersEqualArea","EquidistantConic","LambertConformal"]:
-                if pname == proj:
+            valid.append(pname)
+            if pname == proj:
+                if pname in ["AlbersEqualArea","EquidistantConic","LambertConformal"]:
                     for setting in ["satellite_height"]:
                         if confproj[setting] is not None:
                             logger.info(f"{proj} does not use {setting}; ignoring")
-                if None in confproj["standard_parallels"]:
-                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
-                else:
-                    sp1,sp2=confproj["standard_parallels"]
-                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon,standard_parallels=(sp1, sp2))
-            elif pname in ["Geostationary"]:
-                if pname == proj:
+                    if None in confproj["standard_parallels"]:
+                        return pcls(central_latitude=clat,central_longitude=clon)
+                    else:
+                        sp1,sp2=confproj["standard_parallels"]
+                        return pcls(central_latitude=clat,central_longitude=clon,standard_parallels=(sp1, sp2))
+                elif pname in ["Geostationary"]:
                     for setting in ["central_lat","standard_parallels"]:
                         if confproj[setting] is not None:
                             logger.info(f"{proj} does not use {setting}; ignoring")
-                if confproj["satellite_height"] is None:
-                    projection_dict[pname] = pcls(central_longitude=clon)
-                else:
-                    projection_dict[pname] = pcls(central_longitude=clon,satellite_height=confproj["satellite_height"])
-            elif pname in ["NearsidePerspective"]:
-                if pname == proj:
+                    if confproj["satellite_height"] is None:
+                        return pcls(central_longitude=clon)
+                    else:
+                        return pcls(central_longitude=clon,satellite_height=confproj["satellite_height"])
+                elif pname in ["NearsidePerspective"]:
                     for setting in ["standard_parallels"]:
                         if confproj[setting] is not None:
                             logger.info(f"{proj} does not use {setting}; ignoring")
-                if confproj["satellite_height"] is None:
-                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
-                else:
-                    projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon,satellite_height=confproj["satellite_height"])
-            elif pname in ["AzimuthalEquidistant","Gnomonic","LambertAzimuthalEqualArea","ObliqueMercator","Orthographic","Stereographic","TransverseMercator"]:
-                if pname == proj:
+                    if confproj["satellite_height"] is None:
+                        return pcls(central_latitude=clat,central_longitude=clon)
+                    else:
+                        return pcls(central_latitude=clat,central_longitude=clon,satellite_height=confproj["satellite_height"])
+                elif pname in ["AzimuthalEquidistant","Gnomonic","LambertAzimuthalEqualArea","ObliqueMercator","Orthographic","Stereographic","TransverseMercator"]:
                     for setting in ["satellite_height","standard_parallels"]:
                         if confproj[setting] is not None:
                             logger.info(f"{proj} does not use {setting}; ignoring")
-                projection_dict[pname] = pcls(central_latitude=clat,central_longitude=clon)
-            elif pname in ["Aitoff","EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Gnomonic","Hammer","InterruptedGoodeHomolosine","LambertCylindrical","Mercator","Miller","Mollweide","NorthPolarStereo","PlateCarree","Robinson","Sinusoidal","SouthPolarStereo"]:
-                if pname == proj:
+                    return pcls(central_latitude=clat,central_longitude=clon)
+                elif pname in ["Aitoff","EckertI","EckertII","EckertIII","EckertIV","EckertV","EckertVI","EqualEarth","Gnomonic","Hammer","InterruptedGoodeHomolosine","LambertCylindrical","Mercator","Miller","Mollweide","NorthPolarStereo","PlateCarree","Robinson","Sinusoidal","SouthPolarStereo"]:
                     for setting in ["central_lat","satellite_height","standard_parallels"]:
                         if confproj[setting] is not None:
                             logger.info(f"{proj} does not use {setting}; ignoring")
-                projection_dict[pname] = pcls(central_longitude=clon)
-            else:
-                # Handle projections that require no args
-                try:
-                    if pname == proj:
+                    return pcls(central_longitude=clon)
+                else:
+                    # Handle projections that require no args
+                    try:
                         for setting in ["central_lat","central_lon","satellite_height","standard_parallels"]:
                             if confproj[setting] is not None:
                                 logger.info(f"{proj} does not use {setting}; ignoring")
 
-                    projection_dict[pname] = pcls()  # Instantiate with default args
-                except (TypeError,AttributeError):
-                    # Skip non-projections, like base classes for other projections
-                    continue
+                        return pcls()  # Instantiate with default args
+                    except (TypeError,AttributeError):
+                        # Skip non-projections, like base classes for other projections
+                        continue
 
-    for valid in projection_dict:
-        if proj == valid:
-            logger.debug(f"Setting up {valid} projection")
-            logger.debug(f"{projection_dict[valid]=}\n{type(projection_dict[valid])}")
-            return projection_dict[valid]
-
-    raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{list(projection_dict.keys())}")
+    raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{valid}")
 
 def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> logging.Logger:
     """
