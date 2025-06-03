@@ -50,19 +50,19 @@ def setupargs(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: s
     variables = []
     levels = []
 
-    if config_d["data"]["var"]==["all"]:
+    if config_d["data"]["var"] in [ ["all"], "all" ]:
         for var in uxds:
             variables.append(var)
     else:
         for var in config_d["data"]["var"]:
             variables.append(var)
 
-    if config_d["data"]["lev"]==["all"]:
+    if config_d["data"]["lev"] in [ ["all"], "all" ]:
         # Since there's no good way to query vertical levels in general, we query each variable until we find a 3d one, if there is one
         levels = [0]
         for var in variables:
             if "nVertLevels" in uxds[var].dims:
-                levels = range(0,len(uxds[config_d["data"]["var"]]["nVertLevels"]))
+                levels = range(0,len(uxds[var]["nVertLevels"]))
     else:
         for lev in config_d["data"]["lev"]:
             levels.append(lev)
@@ -134,7 +134,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     pc.set_antialiased(False)
 
     pc.set_cmap(config_d["plot"]["colormap"])
-    pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
     fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
                            config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
@@ -149,24 +148,25 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     else:
         ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
+    if None not in [ config_d["plot"]["vmin"], config_d["plot"]["vmax"]]:
+        pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
+
     #Plot coastlines if requested
     if config_d["plot"]["coastlines"]:
         ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
                        **config_d["plot"]["coastlines"], name='coastline'))
     if config_d["plot"]["boundaries"]:
-        if config_d["plot"]["boundaries"]["detail"]==0:
-            name='admin_0_countries'
-        elif config_d["plot"]["boundaries"]["detail"]==1:
-            name='admin_1_states_provinces'
-        elif config_d["plot"]["boundaries"]["detail"]==2:
-            logger.info("Counties only available at 10m resolution")
-            config_d["plot"]["boundaries"]["scale"]='10m'
-            name='admin_2_counties'
-        else:
-            raise ValueError(f'Invalid value for {config_d["plot"]["boundaries"]["detail"]=}')
         ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                       scale=config_d["plot"]["boundaries"]["scale"], facecolor='none',
-                       linewidth=0.2, name=name))
+                       scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
+                       facecolor='none',linewidth=0.2, name='admin_0_countries'))
+        if config_d["plot"]["boundaries"]["detail"]>0:
+            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                           scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
+                           facecolor='none',linewidth=0.2, name='admin_1_states_provinces'))
+        if config_d["plot"]["boundaries"]["detail"]==2:
+            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                           scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
+                           facecolor='none',linewidth=0.2, name='admin_2_counties'))
 
     #Set file format based on filename or manual settings
     validfmts=fig.canvas.get_supported_filetypes()
@@ -526,6 +526,9 @@ if __name__ == "__main__":
         plotargs=setupargs(logger,expt_config,dataset,grid,f)
         logger.debug(f"{plotargs=}")
         # Make the plots!
+        if args.procs > 1:
+            logger.info(f"Plotting in parallel with {args.procs} tasks")
         with Pool(processes=args.procs) as pool:
             pool.starmap(plotit, plotargs)
 
+    logging.info("Done plotting all figures!")
