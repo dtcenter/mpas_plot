@@ -77,6 +77,24 @@ def setupargs(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: s
     return args
 
 
+def plotithandler(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
+    """
+    A wrapper for plotit() that handles errors for Python multiprocessing
+    """
+
+    logger.info(f"Starting plotit() for {var=}, {lev=}")
+
+    try:
+        plotit(logger,config_d,uxds,grid,var,lev,filepath,proj)
+    except Exception as e:
+        logger.error(f'Could not plot variable {var}, level {lev}')
+        logger.debug(f"Arguments to plotit():\n{logger=}\n{config_d=}\n{uxds=}\n{grid=}\n"\
+                      f"{var=}\n{lev=}\n{filepath=}\n{proj=}")
+        logger.error(f"{traceback.print_tb(e.__traceback__)}:")
+        logger.error(f"{type(e).__name__}:")
+        logger.error(e)
+
+
 def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
     """
     The main program that makes the plot(s)
@@ -90,8 +108,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     Returns:
         None
     """
-
-    print(f"For plotit(), plotting {var=}, {lev=}")
 
     filename=os.path.basename(filepath)
     #filename minus extension
@@ -529,6 +545,6 @@ if __name__ == "__main__":
         if args.procs > 1:
             logger.info(f"Plotting in parallel with {args.procs} tasks")
         with Pool(processes=args.procs) as pool:
-            pool.starmap(plotit, plotargs)
+            pool.starmap(plotithandler, plotargs)
 
-    logging.info("Done plotting all figures!")
+    logger.info("Done plotting all figures!")
