@@ -80,12 +80,6 @@ plot:
   #    abort      Raise exception
   #    rename     Rename the old file using the scheme {filename}-#.png, where # is the next available sequential integer
   #
-  # latrange:
-  # Range of latitudes to plot. Should be a 2-element list, with the first entry being less than the second
-  #
-  # lonrange:
-  # Range of longitudes to plot. Should be a 2-element list, with the first entry being less than the second
-  #
   # periodic_bdy:
   # For periodic domains (including global), the plot routines will ignore the periodic boundary by default.
   # To plot all data, including boundaries, set this option, but it will slow down plotting substantially.
@@ -124,12 +118,6 @@ plot:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
   exists: rename
-  latrange:
-    - -90
-    - 90
-  lonrange:
-    - -180
-    - 180
   colormap: "viridis"
   dpi: 300
   figheight: 4
@@ -177,3 +165,26 @@ plot:
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8
+
+  # Settings for the output map projection:
+  projection:
+    # Name of the actual projection; for valid options see https://scitools.org.uk/cartopy/docs/latest/reference/projections.html
+    # A few special projections are not yet supported: UTM, OSGB, LambertZoneII, EuroPP, OSNI
+    projection: PlateCarree
+    # Range of latitudes/longitudes to plot. Each should be a 2-element list, with the first entry being less than the second
+    latrange:
+      - null
+      - null
+    lonrange:
+      - null
+      - null
+    # Central lat/lon; needed to center the projection for some projections. If not supported, values will be ignored
+    central_lat: null
+    central_lon: null
+    # Satellite height (meters): used for Geostationary and NearsidePerspective projections that simulate a satellite view
+    satellite_height: null
+    # Standard parallels: used for setting projection parameters for AlbersEqualArea, EquidistantConic, and LambertConformal
+    standard_parallels:
+      - null
+      - null
+

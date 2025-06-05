@@ -68,7 +68,7 @@ It may take some time to produce plots, depending on the size of your domain and
 This plotting utility is in a very early form, and has several known limitations:
 
 1. The user must know the name of the variable they want to plot, as well as the number of vertical levels if the variable has multiple.
-2. Only the [PlateCarree](https://scitools.org.uk/cartopy/docs/latest/reference/projections.html#platecarree) projection is currently supported for output maps
+2. Interpolating to projections other than [PlateCarree](https://scitools.org.uk/cartopy/docs/latest/reference/projections.html#platecarree) is very resource-intensive and slow.
 3. Certain variables that have additional dimensions such as grid property values (e.g. kiteAreasOnVertex) may not work out-of-the-box.
 
 
