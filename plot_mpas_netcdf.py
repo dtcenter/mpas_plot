@@ -41,7 +41,43 @@ def load_dataset(logger,fn: str, gf: str = "") -> tuple[ux.UxDataset,ux.Grid]:
     return ux.open_dataset(gf,fn),ux.open_grid(gf)
 
 
-def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,proj,parproc: int) -> None:
+def setupargs(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str):
+    """
+    Sets up the argument list for plotit to allow for parallelization with Python starmap
+    """
+
+    args = []
+    variables = []
+    levels = []
+
+    if config_d["data"]["var"]==["all"]:
+        for var in uxds:
+            variables.append(var)
+    else:
+        for var in config_d["data"]["var"]:
+            variables.append(var)
+
+    if config_d["data"]["lev"]==["all"]:
+        # Since there's no good way to query vertical levels in general, we query each variable until we find a 3d one, if there is one
+        levels = [0]
+        for var in variables:
+            if "nVertLevels" in uxds[var].dims:
+                levels = range(0,len(uxds[config_d["data"]["var"]]["nVertLevels"]))
+    else:
+        for lev in config_d["data"]["lev"]:
+            levels.append(lev)
+
+    # Set up map projection properties
+    proj=set_map_projection(logger,expt_config["plot"]["projection"])
+
+    # Construct list of argument tuples for plotit()
+    for var in variables:
+        for lev in levels:
+            args.append( (logger,config_d,uxds,grid,var,lev,filepath,proj) )
+    return args
+
+
+def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
     """
     The main program that makes the plot(s)
     Args:
@@ -50,204 +86,188 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str,
         grid      (ux.Grid): A ux.Grid object containing the unstructured grid information
         filepath      (str): The filename of the input data that was read into the ux objects
         proj (cartopy.crs.proj): A cartopy projection
-        parproc       (int): The number of processors available for generating plots in parallel
 
     Returns:
         None
     """
 
+    print(f"For plotit(), plotting {var=}, {lev=}")
+
     filename=os.path.basename(filepath)
     #filename minus extension
     fnme=os.path.splitext(filename)[0]
 
-    logger.debug(f"Available data variables:\n{list(uxds.data_vars.keys())}")
+    plotstart = time.time()
+    if var not in list(uxds.data_vars.keys()):
+        msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
+        raise ValueError(msg)
+    logger.info(f"Plotting variable {var}")
+    logger.debug(f"{uxds[var]=}")
+    field=uxds[var]
 
-    for var in config_d["data"]["var"]:
-        plotstart = time.time()
-        if var not in list(uxds.data_vars.keys()):
-            msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
-            raise ValueError(msg)
-        logger.info(f"Plotting variable {var}")
-        logger.debug(f"{uxds[var]=}")
-        field=uxds[var]
+    # If multiple timesteps in a file, only plot the first for now
+    if "Time" in field.dims:
+        logger.info("Plotting first time step")
+        field=field.isel(Time=0)
 
-        # If multiple timesteps in a file, only plot the first for now
-        if "Time" in field.dims:
-            logger.info("Plotting first time step")
-            field=field.isel(Time=0)
+    if "nVertLevels" in field.dims:
+        varslice = field.isel(nVertLevels=lev)
+    else:
+        if lev > 0:
+            logger.error(f"Variable {var} only has one vertical level; can not plot {lev=}")
+            return
+        varslice = field
 
-        # Parse multiple levels for 3d fields
-        # "sliced" is a dictionary of 2d slices of data we will plot. We use a dictionary
-        # instead of a list because the levels may not necessarily be contiguous or monotonic
-        sliced = {}
-        if "nVertLevels" in field.dims:
-            if config_d["data"]["lev"]:
-                levs=config_d["data"]["lev"]
-            logger.info(f'Plotting vertical level(s) {levs}')
-            for lev in levs:
-                sliced[lev]=field.isel(nVertLevels=lev)
+    if "n_face" not in field.dims:
+        logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
+        varslice = varslice.remap.inverse_distance_weighted(grid,
+                                                          remap_to='face centers', k=3)
+        logger.debug(f"Data slice after interpolation:\n{varslice=}")
+
+    if config_d["plot"]["periodic_bdy"]:
+        logger.info("Creating polycollection with periodic_bdy=True")
+        logger.info("NOTE: This option can be very slow for large domains")
+        pc=varslice.to_polycollection(periodic_elements='split')
+    else:
+        pc=varslice.to_polycollection()
+
+    pc.set_antialiased(False)
+
+    pc.set_cmap(config_d["plot"]["colormap"])
+    pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
+
+    fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
+                           config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
+                           constrained_layout=True,
+                           subplot_kw=dict(projection=proj))
+
+
+    logger.debug(config_d["plot"]["projection"])
+    logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
+    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
+        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+    else:
+        ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+
+    #Plot coastlines if requested
+    if config_d["plot"]["coastlines"]:
+        ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
+                       **config_d["plot"]["coastlines"], name='coastline'))
+    if config_d["plot"]["boundaries"]:
+        if config_d["plot"]["boundaries"]["detail"]==0:
+            name='admin_0_countries'
+        elif config_d["plot"]["boundaries"]["detail"]==1:
+            name='admin_1_states_provinces'
+        elif config_d["plot"]["boundaries"]["detail"]==2:
+            logger.info("Counties only available at 10m resolution")
+            config_d["plot"]["boundaries"]["scale"]='10m'
+            name='admin_2_counties'
         else:
-            if len(config_d["data"]["lev"])>1:
-                logger.warning(f"{var} has no vertical dimension; only plotting one level")
-            elif config_d["data"]["lev"][0]>0:
-                logger.warning(f"{var} has no vertical dimension; can not plot level {config_d['data']['lev'][0]} > 0")
-                continue
-            levs = [0]
-            sliced[0]=field
+            raise ValueError(f'Invalid value for {config_d["plot"]["boundaries"]["detail"]=}')
+        ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                       scale=config_d["plot"]["boundaries"]["scale"], facecolor='none',
+                       linewidth=0.2, name=name))
 
-        for lev in levs:
-            logger.debug(f"For level {lev}, data slice to plot:\n{sliced[lev]}")
+    #Set file format based on filename or manual settings
+    validfmts=fig.canvas.get_supported_filetypes()
+    outfile=config_d['plot']['filename']
+    if "." in os.path.basename(outfile):
+        #output filename and extension
+        outfnme,fmt=os.path.splitext(outfile)
+        fmt=fmt[1:]
+        if config_d["plot"]["format"] is not None:
+            if fmt != config_d["plot"]["format"]:
+                raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
+                                 f"{config_d['plot']['format']=}\n" +
+                                 f"{config_d['plot']['filename']=}")
+    else:
+        outfnme=outfile
+        if config_d["plot"]["format"] is not None:
+            fmt=config_d["plot"]["format"]
+        else:
+            logger.warning("No output file format specified; defaulting to PNG")
+            fmt='png'
 
-            if "n_face" not in field.dims:
-                logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
-                sliced[lev] = sliced[lev].remap.inverse_distance_weighted(grid,
-                                                                  remap_to='face centers', k=3)
-                logger.debug(f"Data slice after interpolation:\n{sliced[lev]=}")
+    if fmt not in validfmts:
+        raise ValueError(f"Invalid file format requested: {fmt}\n" +
+                         f"Valid formats are:\n{validfmts}")
 
-            if config_d["plot"]["periodic_bdy"]:
-                logger.info("Creating polycollection with periodic_bdy=True")
-                logger.info("NOTE: This option can be very slow for large domains")
-                pc=sliced[lev].to_polycollection(periodic_elements='split')
-            else:
-                pc=sliced[lev].to_polycollection()
+    # Create a dict of substitutable patterns to make string substitutions easier
+    # using the python string builtin method format_map()
+    patterns = {
+        "var": var,
+        "lev": lev,
+        "units": field.attrs["units"],
+        "varln": field.attrs["long_name"],
+        "filename": filename,
+        "fnme": fnme,
+        "proj": config_d["plot"]["projection"]["projection"],
+    }
+    if field.coords.get("Time"):
+        patterns.update({
+            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
+            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
+        })
+    else:
+        patterns.update({
+            "date": "no_Time_dimension",
+            "time": "no_Time_dimension"
+        })
 
-            pc.set_antialiased(False)
+    # Check if the file already exists, if so act according to plot:exists setting
+    outfnme=outfnme.format_map(patterns)
+    outfile=f"{outfnme.format_map(patterns)}.{fmt}"
+    if os.path.isfile(outfile):
+        if config_d["plot"]["exists"]=="overwrite":
+            logger.info(f"Overwriting existing file {outfile}")
+        elif config_d["plot"]["exists"]=="abort":
+            raise FileExistsError(f"{outfile}\n"
+                  "to change this behavior see plot:exists setting in config file")
+        elif config_d["plot"]["exists"]=="rename":
+            logger.info(f"File exists: {outfile}")
+            i=0
+            # I love when I get to use the walrus operator :D
+            while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
+                logger.debug(f"File exists: {outfile}")
+                i+=1
+            logger.info(f"Saving to {outfile} instead")
+        else:
+            raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
 
-            pc.set_cmap(config_d["plot"]["colormap"])
-            pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
+    pc.set_edgecolor(config_d['plot']['edges']['color'])
+    pc.set_linewidth(config_d['plot']['edges']['width'])
+    pc.set_transform(ccrs.PlateCarree())
 
-            fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
-                                   config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
-                                   constrained_layout=True,
-                                   subplot_kw=dict(projection=proj))
+    logger.debug("Adding collection to plot axes")
+    if config_d["plot"]["projection"]["projection"] != "PlateCarree":
+        logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
+    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
+        coll = ax.add_collection(pc, autolim=True)
+        ax.autoscale()
+    else:
+        coll = ax.add_collection(pc)
 
+    logger.debug("Configuring plot title")
+    if plottitle:=config_d["plot"]["title"].get("text"):
+        plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
+    else:
+        logger.warning("No text field for title specified, creating plot with no title")
 
-            logger.debug(config_d["plot"]["projection"])
-            logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
-            if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
-                logger.info('One or more latitude/longitude range values were not set; plotting full projection')
-            else:
-                ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+    logger.debug("Configuring plot colorbar")
+    if config_d["plot"].get("colorbar"):
+        cb = config_d["plot"]["colorbar"]
+        cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
+        if cb.get("label"):
+            cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
+            cbar.ax.tick_params(labelsize=cb["fontsize"])
 
-            #Plot coastlines if requested
-            if config_d["plot"]["coastlines"]:
-                ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
-                               **config_d["plot"]["coastlines"], name='coastline'))
-            if config_d["plot"]["boundaries"]:
-                if config_d["plot"]["boundaries"]["detail"]==0:
-                    name='admin_0_countries'
-                elif config_d["plot"]["boundaries"]["detail"]==1:
-                    name='admin_1_states_provinces'
-                elif config_d["plot"]["boundaries"]["detail"]==2:
-                    logger.info("Counties only available at 10m resolution")
-                    config_d["plot"]["boundaries"]["scale"]='10m'
-                    name='admin_2_counties'
-                else:
-                    raise ValueError(f'Invalid value for {config_d["plot"]["boundaries"]["detail"]=}')
-                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                               scale=config_d["plot"]["boundaries"]["scale"], facecolor='none',
-                               linewidth=0.2, name=name))
-
-            #Set file format based on filename or manual settings
-            validfmts=fig.canvas.get_supported_filetypes()
-            outfile=config_d['plot']['filename']
-            if "." in os.path.basename(outfile):
-                #output filename and extension
-                outfnme,fmt=os.path.splitext(outfile)
-                fmt=fmt[1:]
-                if config_d["plot"]["format"] is not None:
-                    if fmt != config_d["plot"]["format"]:
-                        raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
-                                         f"{config_d['plot']['format']=}\n" +
-                                         f"{config_d['plot']['filename']=}")
-            else:
-                outfnme=outfile
-                if config_d["plot"]["format"] is not None:
-                    fmt=config_d["plot"]["format"]
-                else:
-                    logger.warning("No output file format specified; defaulting to PNG")
-                    fmt='png'
-
-            if fmt not in validfmts:
-                raise ValueError(f"Invalid file format requested: {fmt}\n" +
-                                 f"Valid formats are:\n{validfmts}")
-
-            # Create a dict of substitutable patterns to make string substitutions easier
-            # using the python string builtin method format_map()
-            patterns = {
-                "var": var,
-                "lev": lev,
-                "units": field.attrs["units"],
-                "varln": field.attrs["long_name"],
-                "filename": filename,
-                "fnme": fnme,
-                "proj": config_d["plot"]["projection"]["projection"],
-            }
-            if field.coords.get("Time"):
-                patterns.update({
-                    "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
-                    "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
-                })
-            else:
-                patterns.update({
-                    "date": "no_Time_dimension",
-                    "time": "no_Time_dimension"
-                })
-
-            # Check if the file already exists, if so act according to plot:exists setting
-            outfnme=outfnme.format_map(patterns)
-            outfile=f"{outfnme.format_map(patterns)}.{fmt}"
-            if os.path.isfile(outfile):
-                if config_d["plot"]["exists"]=="overwrite":
-                    logger.info(f"Overwriting existing file {outfile}")
-                elif config_d["plot"]["exists"]=="abort":
-                    raise FileExistsError(f"{outfile}\n"
-                          "to change this behavior see plot:exists setting in config file")
-                elif config_d["plot"]["exists"]=="rename":
-                    logger.info(f"File exists: {outfile}")
-                    i=0
-                    # I love when I get to use the walrus operator :D
-                    while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
-                        logger.debug(f"File exists: {outfile}")
-                        i+=1
-                    logger.info(f"Saving to {outfile} instead")
-                else:
-                    raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
-
-            pc.set_edgecolor(config_d['plot']['edges']['color'])
-            pc.set_linewidth(config_d['plot']['edges']['width'])
-            pc.set_transform(ccrs.PlateCarree())
-
-            logger.debug("Adding collection to plot axes")
-            if config_d["plot"]["projection"]["projection"] != "PlateCarree":
-                logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
-            if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
-                coll = ax.add_collection(pc, autolim=True)
-                ax.autoscale()
-            else:
-                coll = ax.add_collection(pc)
-
-            logger.debug("Configuring plot title")
-            if plottitle:=config_d["plot"]["title"].get("text"):
-                plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
-            else:
-                logger.warning("No text field for title specified, creating plot with no title")
-
-            logger.debug("Configuring plot colorbar")
-            if config_d["plot"].get("colorbar"):
-                cb = config_d["plot"]["colorbar"]
-                cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
-                if cb.get("label"):
-                    cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
-                    cbar.ax.tick_params(labelsize=cb["fontsize"])
-
-            # Make sure any subdirectories exist before we try to write the file
-            if os.path.dirname(outfile):
-                os.makedirs(os.path.dirname(outfile),exist_ok=True)
-            logger.debug(f"Saving plot {outfile}")
-            plt.savefig(outfile,format=fmt)
-            plt.close(fig)
-            logger.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
+    # Make sure any subdirectories exist before we try to write the file
+    if os.path.dirname(outfile):
+        os.makedirs(os.path.dirname(outfile),exist_ok=True)
+    logger.debug(f"Saving plot {outfile}")
+    plt.savefig(outfile,format=fmt)
+    plt.close(fig)
+    logger.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
 
 
 def set_map_projection(logger,confproj) -> ccrs.Projection:
@@ -506,12 +526,16 @@ if __name__ == "__main__":
         # Open specified file and load dataset
         dataset,grid=load_dataset(logger,f,expt_config["data"]["gridfile"])
 
-        # Set up map projection properties
-        proj=set_map_projection(logger,expt_config["plot"]["projection"])
 
         logger.debug(f"{dataset=}")
         logger.debug(f"{grid=}")
-        logger.debug(f"{proj=}")
 
+        logger.debug(f"Available data variables:\n{list(dataset.data_vars.keys())}")
+
+        # Set up plotit() arguments
+        plotargs=setupargs(logger,expt_config,dataset,grid,f)
+        logger.debug(f"{plotargs=}")
         # Make the plots!
-        plotit(logger,expt_config,dataset,grid,f,proj,args.procs)
+        with Pool(processes=args.procs) as pool:
+            pool.starmap(plotit, plotargs)
+
