@@ -283,7 +283,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     logger.debug(f"Saving plot {outfile}")
     plt.savefig(outfile,format=fmt)
     plt.close(fig)
-    logger.debug(f"Done. Plot generation {time.time()-plotstart} seconds")
+    logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
 
 
 def set_map_projection(logger,confproj) -> ccrs.Projection:
