@@ -139,7 +139,8 @@ plot:
     # states, provinces, etc.), Level 2 is county boundaries (US only); counties require 10m scale
     detail: 0
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
-    scale: 50m
+    scale: '50m'
+    color: 'black'
 
   # Settings for plotting coastlines. To disable coastlines, specify "coastlines:" with no options
   coastlines:
