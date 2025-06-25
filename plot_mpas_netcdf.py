@@ -213,21 +213,26 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     patterns = {
         "var": var,
         "lev": lev,
-        "units": field.attrs["units"],
-        "varln": field.attrs["long_name"],
+        "units": "no_Units",
+        "varln": "no_long_name",
         "filename": filename,
         "fnme": fnme,
         "proj": config_d["plot"]["projection"]["projection"],
+        "date": "no_Time_dimension",
+        "time": "no_Time_dimension"
     }
+    if field.attrs.get("units"):
+        patterns.update({
+            "units": field.attrs["units"],
+        })
+    if field.attrs.get("long_name"):
+        patterns.update({
+            "varln": field.attrs["long_name"]
+        })
     if field.coords.get("Time"):
         patterns.update({
             "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
             "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
-        })
-    else:
-        patterns.update({
-            "date": "no_Time_dimension",
-            "time": "no_Time_dimension"
         })
 
     # Check if the file already exists, if so act according to plot:exists setting
