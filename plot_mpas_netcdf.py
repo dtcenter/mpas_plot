@@ -140,24 +140,33 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
                                                           remap_to='face centers', k=3)
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
-    if config_d["plot"]["periodic_bdy"]:
-        logger.info("Creating polycollection with periodic_bdy=True")
-        logger.info("NOTE: This option can be very slow for large domains")
-        pc=varslice.to_polycollection(periodic_elements='split')
-    else:
-        pc=varslice.to_polycollection()
+#    if config_d["plot"]["periodic_bdy"]:
+#        logger.info("Creating polycollection with periodic_bdy=True")
+#        logger.info("NOTE: This option can be very slow for large domains")
+#        pc=varslice.to_polycollection(periodic_elements='split')
+#    else:
+#        pc=varslice.to_polycollection()
 
-    pc.set_antialiased(False)
+#    fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
+#                           config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
+#                           constrained_layout=True,
+#                           subplot_kw=dict(projection=proj))
 
-    pc.set_cmap(config_d["plot"]["colormap"])
+    fig, ax = plt.subplots(subplot_kw={"projection": proj},
+                           figsize=(config_d["plot"]["figwidth"],config_d["plot"]["figheight"]),
+                           dpi=config_d["plot"]["dpi"], constrained_layout=True
+    )
 
-    fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
-                           config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
-                           constrained_layout=True,
-                           subplot_kw=dict(projection=proj))
+    raster = varslice.to_raster(ax=ax)
+    extent = [config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]]
+#    extent=ax.get_xlim() + ax.get_ylim()
+#    extent=[0,50,0,50]
 
+    img = ax.imshow(
+        raster, cmap=config_d["plot"]["colormap"], origin="lower",
+        extent=extent
+    )
 
-    logger.debug(config_d["plot"]["projection"])
     logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
     if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
         logger.info('One or more latitude/longitude range values were not set; plotting full projection')
@@ -255,18 +264,18 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
         else:
             raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
 
-    pc.set_edgecolor(config_d['plot']['edges']['color'])
-    pc.set_linewidth(config_d['plot']['edges']['width'])
-    pc.set_transform(ccrs.PlateCarree())
+#    pc.set_edgecolor(config_d['plot']['edges']['color'])
+#    pc.set_linewidth(config_d['plot']['edges']['width'])
+#    pc.set_transform(ccrs.PlateCarree())
 
-    logger.debug("Adding collection to plot axes")
-    if config_d["plot"]["projection"]["projection"] != "PlateCarree":
-        logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
-    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
-        coll = ax.add_collection(pc, autolim=True)
-        ax.autoscale()
-    else:
-        coll = ax.add_collection(pc)
+#    logger.debug("Adding collection to plot axes")
+#    if config_d["plot"]["projection"]["projection"] != "PlateCarree":
+#        logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
+#    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
+#        coll = ax.add_collection(pc, autolim=True)
+#        ax.autoscale()
+#    else:
+#        coll = ax.add_collection(pc)
 
     logger.debug("Configuring plot title")
     if plottitle:=config_d["plot"]["title"].get("text"):
@@ -277,7 +286,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     logger.debug("Configuring plot colorbar")
     if config_d["plot"].get("colorbar"):
         cb = config_d["plot"]["colorbar"]
-        cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
+        cbar = plt.colorbar(img,ax=ax,orientation=cb["orientation"])
         if cb.get("label"):
             cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
             cbar.ax.tick_params(labelsize=cb["fontsize"])
@@ -480,7 +489,9 @@ def setup_config(logger: logging.Logger, config: str, default: str="default_opti
         sys.exit(1)
 
     # Update the dict read from defaults file with the dict read from user config file
-    expt_config.update_values(user_config)
+    print(f"1\n{expt_config=}\n")
+    expt_config.update_from(user_config)
+    print(f"2\n{expt_config=}\n")
 
     # Perform consistency checks
     if not expt_config["data"].get("lev"):
