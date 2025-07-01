@@ -157,6 +157,12 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
                            dpi=config_d["plot"]["dpi"], constrained_layout=True
     )
 
+    logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
+    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
+        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+    else:
+        ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+
     raster = varslice.to_raster(ax=ax)
     extent = [config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]]
 #    extent=ax.get_xlim() + ax.get_ylim()
@@ -166,12 +172,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
         raster, cmap=config_d["plot"]["colormap"], origin="lower",
         extent=extent
     )
-
-    logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
-    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
-        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
-    else:
-        ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
     if None not in [ config_d["plot"]["vmin"], config_d["plot"]["vmax"]]:
         pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
