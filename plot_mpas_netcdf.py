@@ -140,12 +140,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
                                                           remap_to='face centers', k=3)
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
-#    if config_d["plot"]["periodic_bdy"]:
-#        logger.info("Creating polycollection with periodic_bdy=True")
-#        logger.info("NOTE: This option can be very slow for large domains")
-#        pc=varslice.to_polycollection(periodic_elements='split')
-#    else:
-#        pc=varslice.to_polycollection()
 
 #    fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
 #                           config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
@@ -161,17 +155,21 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
         logger.info('One or more latitude/longitude range values were not set; plotting full projection')
     else:
-        ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+        ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=proj)
 
     raster = varslice.to_raster(ax=ax)
     extent = [config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]]
 #    extent=ax.get_xlim() + ax.get_ylim()
 #    extent=[0,50,0,50]
 
+
+#    print(f"{raster=}")
+#    print(f"{extent=}")
     img = ax.imshow(
         raster, cmap=config_d["plot"]["colormap"], origin="lower",
-        extent=extent
+        extent=extent,transform=ccrs.PlateCarree()
     )
+
 
     if None not in [ config_d["plot"]["vmin"], config_d["plot"]["vmax"]]:
         pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
@@ -507,6 +505,9 @@ def setup_config(logger: logging.Logger, config: str, default: str="default_opti
     if isinstance(expt_config["plot"]["title"],str):
         raise TypeError("plot:title should be a dictionary, not a string\n"\
                         "Adjust your config.yaml accordingly. See default_options.yaml for details.")
+    if expt_config["plot"].get("periodic_bdy"):
+        logger.warning("plot:periodic_bdy option is deprecated\n"\
+                       "Adjust your config.yaml accordingly. See default_options.yaml for details.")
 
     logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()

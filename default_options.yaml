@@ -80,10 +80,6 @@ plot:
   #    abort      Raise exception
   #    rename     Rename the old file using the scheme {filename}-#.png, where # is the next available sequential integer
   #
-  # periodic_bdy:
-  # For periodic domains (including global), the plot routines will ignore the periodic boundary by default.
-  # To plot all data, including boundaries, set this option, but it will slow down plotting substantially.
-  #
   # colormap:
   # Colormap for output from Matplotlib. Reference documentation for valid options:
   # https://matplotlib.org/stable/gallery/color/colormap_reference.html
@@ -122,7 +118,6 @@ plot:
   dpi: 300
   figheight: 4
   figwidth: 8
-  periodic_bdy: False
 
   vmin: null
   vmax: null
