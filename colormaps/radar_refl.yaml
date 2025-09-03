@@ -1,0 +1,20 @@
+vmin: 5
+vmax: 75
+plot_under: False
+colors:
+ - "#9C9C9C"
+ - "#767676"
+ - "#AAAAFF"
+ - "#8C8CEE"
+ - "#7070C9"
+ - "#00FB90"
+ - "#00BB00"
+ - "#FFFF70"
+ - "#D0D060"
+ - "#FF6060"
+ - "#DA0000"
+ - "#AE0000"
+ - "#0000FF"
+ - "#FFFFFF"
+ - "#E700FF"
+

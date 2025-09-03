@@ -149,7 +149,30 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
 
     pc.set_antialiased(False)
 
-    pc.set_cmap(config_d["plot"]["colormap"])
+    # Handle color mapping
+    cmapname=config_d["plot"]["colormap"]
+    if cmapname in plt.colormaps():
+        cmap=mpl.colormaps[cmapname]
+        pc.set_cmap(config_d["plot"]["colormap"])
+    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
+        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
+        #Overwrite additional settings specified in colormap file
+        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
+        for setting in cmap_settings:
+            if setting == "colors":
+                # plot:colors is a list of color values for the custom colormap and is handled separately
+                continue
+            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
+            config_d["plot"][setting]=cmap_settings[setting]
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"])
+    else:
+        raise ValueError(f"Requested color map {cmapname} is not valid")
+
+    if not config_d["plot"]["plot_over"]:
+        cmap.set_over(alpha=0)
+    if not config_d["plot"]["plot_under"]:
+        cmap.set_under(alpha=0)
+    pc.set_cmap(cmap)
 
     fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
                            config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
