@@ -15,7 +15,7 @@ data:
   # filename (mandatory):
   # Full or relative path to filename containing MPAS data you wish to plot. Can be a single file,
   # a glob-able regex pattern match (e.g. /path/to/nc/data/*.nc), or a list of files
-  # 
+  #
   # gridfile:
   # Some MPAS files (usually "diag" files) do not contain grid information; in these cases you
   # must specify a "gridfile" that contains the grid information for the script to read
@@ -24,7 +24,7 @@ data:
   #
   # var:
   # Variable name to plot. Can be a list of variable names, or the string "all" (default).
-  # 
+  #
   # lev: Variable level to plot (for variables with multiple vertical levels). Can be a list of
   # level numbers, or the string "all". Default is level 1.
 
@@ -66,7 +66,7 @@ plot:
   # format:
   # The image format of the output, if not specified in the filename. See matplotlib documentation for valid options:
   # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html#matplotlib.pyplot.savefig
-  # 
+  #
   # title:
   # Settings controlling the title of the output plot(s) that will appear in the image above the plotted data.
   #   text:
@@ -77,23 +77,15 @@ plot:
   # exists:
   # Handle case when file exists. Valid options are
   #    overwrite  Overwrite existing file
-  #    abort      Raise exception
+  #    abort      Raise an exception
   #    rename     Rename the old file using the scheme {filename}-#.png, where # is the next available sequential integer
-  #
-  # periodic_bdy:
-  # For periodic domains (including global), the plot routines will ignore the periodic boundary by default.
-  # To plot all data, including boundaries, set this option, but it will slow down plotting substantially.
-  #
-  # colormap:
-  # Colormap for output from Matplotlib. Reference documentation for valid options:
-  # https://matplotlib.org/stable/gallery/color/colormap_reference.html
   #
   # dpi:
   # Image dots per inch
   #
   # figheight:
   # Image height in inches
-  # 
+  #
   # figwidth:
   # Image width in inches
 
@@ -114,10 +106,24 @@ plot:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
   exists: rename
-  colormap: "viridis"
   dpi: 300
   figheight: 4
   figwidth: 8
+
+  # colormap:
+  # Color scheme to use for output plots. Options can either be standard Matplotlib colormaps (reference
+  # https://matplotlib.org/stable/gallery/color/colormap_reference.html for valid options) or the name of
+  # a custom colormap under the colormaps/ directory (currently just one option: "radar_refl").
+  #
+  # NOTE: custom colormaps also include additional settings that will overwrite user config choices; see
+  # README.md for more information.
+  #
+  colormap: "viridis"
+
+  # periodic_bdy:
+  # For periodic domains (including global), the plot routines will omit the boundary cells by default. To plot
+  # all data, including boundaries, set this option to True, but note that it will slow down plotting substantially.
+  #
   periodic_bdy: False
 
   # vmin, vmax:
@@ -127,7 +133,7 @@ plot:
   vmin: null
   vmax: null
 
-  # :
+  # plot_under, plot_over:
   # By default any values above vmax or below vmin will be plotted as the color for vmax/vmin respectively.
   # To omit these out-of-range values all together, set plot_over/plot_under to False respectively.
 
