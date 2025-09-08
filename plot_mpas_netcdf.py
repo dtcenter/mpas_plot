@@ -219,7 +219,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if config_d["plot"].get("lakes"):
         pl=config_d["plot"]["lakes"]
         if pl.get("enable"):
-            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["edgecolor"],facecolor='none',
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["color"],facecolor='none',
                            linewidth=pl["linewidth"], scale=pl["scale"], name='lakes'))
 
 

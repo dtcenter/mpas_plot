@@ -163,8 +163,7 @@ plot:
     enable: True
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '10m'
-    color: 'blue'
-    facecolor: 'lightblue'
+    color: 'black'
     linewidth: 0.5
 
   # Settings for plotting lakes.
@@ -172,7 +171,7 @@ plot:
     enable: False
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '50m'
-    color: 'blue'
+    color: 'black'
     linewidth: 0.5
 
   # Settings for the plot's color bar
