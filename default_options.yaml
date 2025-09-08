@@ -162,8 +162,17 @@ plot:
   coastlines:
     enable: True
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
+    scale: '10m'
+    color: 'blue'
+    facecolor: 'lightblue'
+    linewidth: 0.5
+
+  # Settings for plotting lakes.
+  lakes:
+    enable: False
+    # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '50m'
-    color: 'black'
+    color: 'blue'
     linewidth: 0.5
 
   # Settings for the plot's color bar

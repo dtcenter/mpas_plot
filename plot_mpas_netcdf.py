@@ -215,6 +215,13 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
         if pcl.get("enable"):
             ax.add_feature(cfeature.NaturalEarthFeature(category='physical',color=pcl["color"],facecolor='none',
                            linewidth=pcl["linewidth"], scale=pcl["scale"], name='coastline'))
+    #Plot lakes if requested
+    if config_d["plot"].get("lakes"):
+        pl=config_d["plot"]["lakes"]
+        if pl.get("enable"):
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["edgecolor"],facecolor='none',
+                           linewidth=pl["linewidth"], scale=pl["scale"], name='lakes'))
+
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
     patterns,outfile,fmt = set_patterns_and_outfile(logger,validfmts,var,lev,filepath,field,config_d["plot"])
