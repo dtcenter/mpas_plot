@@ -109,10 +109,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
         None
     """
 
-    filename=os.path.basename(filepath)
-    #filename minus extension
-    fnme=os.path.splitext(filename)[0]
-
     plotstart = time.time()
     if var not in list(uxds.data_vars.keys()):
         msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
@@ -179,6 +175,9 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
                            constrained_layout=True,
                            subplot_kw=dict(projection=proj))
 
+    # Check the valid file formats supported for this figure
+    validfmts=fig.canvas.get_supported_filetypes()
+
 
     logger.debug(config_d["plot"]["projection"])
     logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
@@ -207,76 +206,9 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
                            scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
                            facecolor='none',linewidth=0.2, name='admin_2_counties'))
 
-    #Set file format based on filename or manual settings
-    validfmts=fig.canvas.get_supported_filetypes()
-    outfile=config_d['plot']['filename']
-    if "." in os.path.basename(outfile):
-        #output filename and extension
-        outfnme,fmt=os.path.splitext(outfile)
-        fmt=fmt[1:]
-        if config_d["plot"]["format"] is not None:
-            if fmt != config_d["plot"]["format"]:
-                raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
-                                 f"{config_d['plot']['format']=}\n" +
-                                 f"{config_d['plot']['filename']=}")
-    else:
-        outfnme=outfile
-        if config_d["plot"]["format"] is not None:
-            fmt=config_d["plot"]["format"]
-        else:
-            logger.warning("No output file format specified; defaulting to PNG")
-            fmt='png'
 
-    if fmt not in validfmts:
-        raise ValueError(f"Invalid file format requested: {fmt}\n" +
-                         f"Valid formats are:\n{validfmts}")
-
-    # Create a dict of substitutable patterns to make string substitutions easier
-    # using the python string builtin method format_map()
-    patterns = {
-        "var": var,
-        "lev": lev,
-        "units": "no_Units",
-        "varln": "no_long_name",
-        "filename": filename,
-        "fnme": fnme,
-        "proj": config_d["plot"]["projection"]["projection"],
-        "date": "no_Time_dimension",
-        "time": "no_Time_dimension"
-    }
-    if field.attrs.get("units"):
-        patterns.update({
-            "units": field.attrs["units"],
-        })
-    if field.attrs.get("long_name"):
-        patterns.update({
-            "varln": field.attrs["long_name"]
-        })
-    if field.coords.get("Time"):
-        patterns.update({
-            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
-            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
-        })
-
-    # Check if the file already exists, if so act according to plot:exists setting
-    outfnme=outfnme.format_map(patterns)
-    outfile=f"{outfnme.format_map(patterns)}.{fmt}"
-    if os.path.isfile(outfile):
-        if config_d["plot"]["exists"]=="overwrite":
-            logger.info(f"Overwriting existing file {outfile}")
-        elif config_d["plot"]["exists"]=="abort":
-            raise FileExistsError(f"{outfile}\n"
-                  "to change this behavior see plot:exists setting in config file")
-        elif config_d["plot"]["exists"]=="rename":
-            logger.info(f"File exists: {outfile}")
-            i=0
-            # I love when I get to use the walrus operator :D
-            while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
-                logger.debug(f"File exists: {outfile}")
-                i+=1
-            logger.info(f"Saving to {outfile} instead")
-        else:
-            raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
+    # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
+    patterns,outfile,fmt = set_patterns_and_outfile(logger,validfmts,var,lev,filepath,field,config_d["plot"])
 
     pc.set_edgecolor(config_d['plot']['edges']['color'])
     pc.set_linewidth(config_d['plot']['edges']['width'])
@@ -295,7 +227,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if plottitle:=config_d["plot"]["title"].get("text"):
         plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
     else:
-        logger.warning("No text field for title specified, creating plot with no title")
+        logger.warning("No 'text' field for title specified, creating plot with no title")
 
     logger.debug("Configuring plot colorbar")
     if config_d["plot"].get("colorbar"):
@@ -312,6 +244,91 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     plt.savefig(outfile,format=fmt)
     plt.close(fig)
     logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
+
+
+def set_patterns_and_outfile(logger, valid, var, lev, filepath, field, plotdict):
+    """
+    Create and return a dictionary of substituting patterns to make string substitutions easier
+    in filenames and other text fields based on user input, using the python string builtin method
+    format_map().
+    Also, return string for the output filename and file format based on input files and user settings.
+    """
+    # Output plot filename
+    outfile=plotdict['filename']
+    if "." in os.path.basename(outfile):
+        #output filename and extension
+        outfnme,fmt=os.path.splitext(outfile)
+        fmt=fmt[1:]
+        if plotdict["format"] is not None:
+            if fmt != plotdict["format"]:
+                raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
+                                 f"{plotdict['format']=}\n" +
+                                 f"{plotdict['filename']=}")
+    else:
+        outfnme=outfile
+        if plotdict["format"] is not None:
+            fmt=plotdict["format"]
+        else:
+            logger.warning("No output file format specified; defaulting to PNG")
+            fmt='png'
+
+    if fmt not in valid:
+        raise ValueError(f"Invalid file format requested: {fmt}\n" +
+                         f"Valid formats are:\n{valid}")
+
+    # Input data filename
+    filename=os.path.basename(filepath)
+    #filename minus extension
+    fnme=os.path.splitext(filename)[0]
+
+    pattern_dict = {
+        "var": var,
+        "lev": lev,
+        "units": "no_Units",
+        "varln": "no_long_name",
+        "filename": filename,
+        "fnme": fnme,
+        "proj": plotdict["projection"]["projection"],
+        "date": "no_Time_dimension",
+        "time": "no_Time_dimension"
+    }
+    if field.attrs.get("units"):
+        pattern_dict.update({
+            "units": field.attrs["units"],
+        })
+    if field.attrs.get("long_name"):
+        pattern_dict.update({
+            "varln": field.attrs["long_name"]
+        })
+    if field.coords.get("Time"):
+        pattern_dict.update({
+            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
+            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
+        })
+
+
+    # Check if the output file already exists, if so act according to plot:exists setting
+    outfnme=outfnme.format_map(pattern_dict)
+    outfile=f"{outfnme.format_map(pattern_dict)}.{fmt}"
+    if os.path.isfile(outfile):
+        if config_d["plot"]["exists"]=="overwrite":
+            logger.info(f"Overwriting existing file {outfile}")
+        elif config_d["plot"]["exists"]=="abort":
+            raise FileExistsError(f"{outfile}\n"
+                  "to change this behavior see plot:exists setting in config file")
+        elif config_d["plot"]["exists"]=="rename":
+            logger.info(f"File exists: {outfile}")
+            i=0
+            # I love when I get to use the walrus operator :D
+            while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
+                logger.debug(f"File exists: {outfile}")
+                i+=1
+            logger.info(f"Saving to {outfile} instead")
+        else:
+            raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
+
+
+    return pattern_dict, outfile, fmt
 
 
 def set_map_projection(logger,confproj) -> ccrs.Projection:
