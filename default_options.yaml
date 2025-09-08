@@ -146,8 +146,10 @@ plot:
     color: face
     width: 0.1
 
-  # Settings for plotting political boundaries. To disable political boundaries, specify "boundaries:" with no options
+  # Settings for plotting political boundaries. Settings scale, color, linewidth can either be a value (to apply to all boundaries)
+  # or a list of values to apply to the specific level 0, 1, or two boundaries described below
   boundaries:
+    enable: True
     # Level of political boundaries to plot. Level 0 is national boundaries, Level 1 is sub-national boundaries (e.g.
     # states, provinces, etc.), Level 2 is county boundaries (US only); counties require 10m scale
     detail: 0
@@ -155,8 +157,9 @@ plot:
     scale: '50m'
     color: 'black'
 
-  # Settings for plotting coastlines. To disable coastlines, specify "coastlines:" with no options
+  # Settings for plotting coastlines.
   coastlines:
+    enable: True
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '10m'
     # Most standard Matplotlib arguments for shapes will work here, but I haven't figured out good documentation on which.
@@ -175,7 +178,7 @@ plot:
     #
     # fontsize:
     # Font size for the colobar label.
-
+    enable: True
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8

@@ -190,21 +190,27 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
         pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
     #Plot coastlines if requested
-    if config_d["plot"]["coastlines"]:
-        ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
-                       **config_d["plot"]["coastlines"], name='coastline'))
-    if config_d["plot"]["boundaries"]:
-        ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                       scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                       facecolor='none',linewidth=0.2, name='admin_0_countries'))
-        if config_d["plot"]["boundaries"]["detail"]>0:
+    if config_d["plot"].get("coastlines"):
+        if config_d["plot"]["coastlines"].get("enable"):
+            coastline_features=copy.copy(config_d["plot"]["coastlines"])
+            # Except for "enable", all keys of config_d["plot"]["coastlines"] are valid args to ax.add_feature, so
+            # this logic is simpler than passing every option individually
+            coastline_features.pop("enable")
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
+                           **coastline_features, name='coastline'))
+    if config_d["plot"].get("boundaries"):
+        if config_d["plot"]["boundaries"].get("enable"):
             ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
                            scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                           facecolor='none',linewidth=0.2, name='admin_1_states_provinces'))
-        if config_d["plot"]["boundaries"]["detail"]==2:
-            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                           scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                           facecolor='none',linewidth=0.2, name='admin_2_counties'))
+                           facecolor='none',linewidth=0.2, name='admin_0_countries'))
+            if config_d["plot"]["boundaries"]["detail"]>0:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
+                               facecolor='none',linewidth=0.2, name='admin_1_states_provinces'))
+            if config_d["plot"]["boundaries"]["detail"]==2:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
+                               facecolor='none',linewidth=0.2, name='admin_2_counties'))
 
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
@@ -231,11 +237,12 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
 
     logger.debug("Configuring plot colorbar")
     if config_d["plot"].get("colorbar"):
-        cb = config_d["plot"]["colorbar"]
-        cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
-        if cb.get("label"):
-            cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
-            cbar.ax.tick_params(labelsize=cb["fontsize"])
+        if config_d["plot"].get("colorbar").get("enable"):
+            cb = config_d["plot"]["colorbar"]
+            cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
+            if cb.get("label"):
+                cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
+                cbar.ax.tick_params(labelsize=cb["fontsize"])
 
     # Make sure any subdirectories exist before we try to write the file
     if os.path.dirname(outfile):
@@ -311,12 +318,12 @@ def set_patterns_and_outfile(logger, valid, var, lev, filepath, field, plotdict)
     outfnme=outfnme.format_map(pattern_dict)
     outfile=f"{outfnme.format_map(pattern_dict)}.{fmt}"
     if os.path.isfile(outfile):
-        if config_d["plot"]["exists"]=="overwrite":
+        if plotdict["exists"]=="overwrite":
             logger.info(f"Overwriting existing file {outfile}")
-        elif config_d["plot"]["exists"]=="abort":
+        elif plotdict["exists"]=="abort":
             raise FileExistsError(f"{outfile}\n"
                   "to change this behavior see plot:exists setting in config file")
-        elif config_d["plot"]["exists"]=="rename":
+        elif plotdict["exists"]=="rename":
             logger.info(f"File exists: {outfile}")
             i=0
             # I love when I get to use the walrus operator :D
@@ -325,7 +332,7 @@ def set_patterns_and_outfile(logger, valid, var, lev, filepath, field, plotdict)
                 i+=1
             logger.info(f"Saving to {outfile} instead")
         else:
-            raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
+            raise ValueError(f"Invalid option: config_d['plot']['exists']={plotdict['exists']}")
 
 
     return pattern_dict, outfile, fmt
