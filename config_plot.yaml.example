@@ -1,3 +1,5 @@
+# This is an example configure file; for additional documentation and a list of all available options, see default_options.yaml
+
 data:
   filename: /scratch1/BMC/hmtb/kavulich/MPAS/plotting_scripts/DTC_fork/mpas_app/ush/plotting/history.2023-09-15_09.00.00.nc
 #  gridfile: /scratch1/BMC/hmtb/kavulich/MPAS/plotting_scripts/DTC_fork/mpas_app/ush/plotting/history.2023-09-15_09.00.00.nc
@@ -19,20 +21,25 @@ plot:
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
-  edges:
-    color: black
-    width: 0.1
   colorbar:
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8
+  boundaries:
+    detail: 0
+    scale: '50m'
+    color: 'black'
+
+  coastlines:
+    color: 'black'
+    linewidth: 0.5
   # Colormap for output from Matplotlib. Reference: https://matplotlib.org/stable/gallery/color/colormap_reference.html
   colormap: "viridis"
   dpi: 300
   figheight: 4
   figwidth: 8
   projection:
-    projection: Mercator
+    projection: PlateCarree
     latrange:
       - 10
       - 45
