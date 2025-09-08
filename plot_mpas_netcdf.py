@@ -189,29 +189,32 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if None not in [ config_d["plot"]["vmin"], config_d["plot"]["vmax"]]:
         pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
+    #Plot political boundaries if requested
+    if config_d["plot"].get("boundaries"):
+        pb=config_d["plot"]["boundaries"]
+        if pb.get("enable"):
+            # Users can set these values to scalars or lists; if scalar provided, re-format to list with three identical values
+            for setting in ["color", "linewidth", "scale"]:
+                if type(pb[setting]) is not list:
+
+                    pb[setting]=[pb[setting],pb[setting],pb[setting]]
+            if pb["detail"]==2:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=pb["scale"][2],edgecolor=pb["color"][2],
+                               facecolor='none',linewidth=pb["linewidth"][2], name='admin_2_counties'))
+            if pb["detail"]>0:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=pb["scale"][1],edgecolor=pb["color"][1],
+                               facecolor='none',linewidth=pb["linewidth"][1], name='admin_1_states_provinces'))
+            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                           scale=pb["scale"][0],edgecolor=pb["color"][0],
+                           facecolor='none',linewidth=pb["linewidth"][0], name='admin_0_countries'))
     #Plot coastlines if requested
     if config_d["plot"].get("coastlines"):
-        if config_d["plot"]["coastlines"].get("enable"):
-            coastline_features=copy.copy(config_d["plot"]["coastlines"])
-            # Except for "enable", all keys of config_d["plot"]["coastlines"] are valid args to ax.add_feature, so
-            # this logic is simpler than passing every option individually
-            coastline_features.pop("enable")
-            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
-                           **coastline_features, name='coastline'))
-    if config_d["plot"].get("boundaries"):
-        if config_d["plot"]["boundaries"].get("enable"):
-            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                           scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                           facecolor='none',linewidth=0.2, name='admin_0_countries'))
-            if config_d["plot"]["boundaries"]["detail"]>0:
-                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                               scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                               facecolor='none',linewidth=0.2, name='admin_1_states_provinces'))
-            if config_d["plot"]["boundaries"]["detail"]==2:
-                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                               scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                               facecolor='none',linewidth=0.2, name='admin_2_counties'))
-
+        pcl=config_d["plot"]["coastlines"]
+        if pcl.get("enable"):
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',color=pcl["color"],facecolor='none',
+                           linewidth=pcl["linewidth"], scale=pcl["scale"], name='coastline'))
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
     patterns,outfile,fmt = set_patterns_and_outfile(logger,validfmts,var,lev,filepath,field,config_d["plot"])
