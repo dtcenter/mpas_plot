@@ -1,8 +1,8 @@
 # This is an example configure file; for additional documentation and a list of all available options, see default_options.yaml
 
 data:
-  filename: /scratch1/BMC/hmtb/kavulich/MPAS/plotting_scripts/DTC_fork/mpas_app/ush/plotting/history.2023-09-15_09.00.00.nc
-#  gridfile: /scratch1/BMC/hmtb/kavulich/MPAS/plotting_scripts/DTC_fork/mpas_app/ush/plotting/history.2023-09-15_09.00.00.nc
+  filename: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
+#  gridfile: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
   var:
     - qv
   lev:
