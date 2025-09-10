@@ -25,23 +25,11 @@ import cartopy.crs as ccrs
 
 import uwtools.api.config as uwconfig
 
+from file_read import load_dataset
 
-def load_dataset(logger,fn: str, gf: str = "") -> tuple[ux.UxDataset,ux.Grid]:
-    """
-    Program loads the dataset from the specified MPAS NetCDF data file and grid file and returns
-    ux.UxDataset and ux.Grid objects. If grid file not specified, it is assumed to be the same as
-    the data file.
-    """
+logger = logging.getLogger(__name__)
 
-    logger.info(f"Reading data from {fn}")
-    if gf:
-        logger.info(f"Reading grid from {gf}")
-    else:
-        gf=fn
-    return ux.open_dataset(gf,fn),ux.open_grid(gf)
-
-
-def setupargs(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str):
+def setupargs(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str):
     """
     Sets up the argument list for plotit to allow for parallelization with Python starmap
     """
@@ -68,16 +56,16 @@ def setupargs(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: s
             levels.append(lev)
 
     # Set up map projection properties
-    proj=set_map_projection(logger,expt_config["plot"]["projection"])
+    proj=set_map_projection(expt_config["plot"]["projection"])
 
     # Construct list of argument tuples for plotit()
     for var in variables:
         for lev in levels:
-            args.append( (logger,config_d,uxds,grid,var,lev,filepath,proj) )
+            args.append( (config_d,uxds,grid,var,lev,filepath,proj) )
     return args
 
 
-def plotithandler(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
+def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
     """
     A wrapper for plotit() that handles errors for Python multiprocessing
     """
@@ -85,17 +73,17 @@ def plotithandler(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: st
     logger.info(f"Starting plotit() for {var=}, {lev=}")
 
     try:
-        plotit(logger,config_d,uxds,grid,var,lev,filepath,proj)
+        plotit(config_d,uxds,grid,var,lev,filepath,proj)
     except Exception as e:
         logger.error(f'Could not plot variable {var}, level {lev}')
-        logger.debug(f"Arguments to plotit():\n{logger=}\n{config_d=}\n{uxds=}\n{grid=}\n"\
+        logger.debug(f"Arguments to plotit():\n{config_d=}\n{uxds=}\n{grid=}\n"\
                       f"{var=}\n{lev=}\n{filepath=}\n{proj=}")
         logger.error(f"{traceback.print_tb(e.__traceback__)}:")
         logger.error(f"{type(e).__name__}:")
         logger.error(e)
 
 
-def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
+def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
     """
     The main program that makes the plot(s)
     Args:
@@ -224,7 +212,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
 
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
-    patterns,outfile,fmt = set_patterns_and_outfile(logger,validfmts,var,lev,filepath,field,config_d["plot"])
+    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,field,config_d["plot"])
 
     pc.set_edgecolor(config_d['plot']['edges']['color'])
     pc.set_linewidth(config_d['plot']['edges']['width'])
@@ -263,7 +251,7 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
 
 
-def set_patterns_and_outfile(logger, valid, var, lev, filepath, field, plotdict):
+def set_patterns_and_outfile(valid, var, lev, filepath, field, plotdict):
     """
     Create and return a dictionary of substituting patterns to make string substitutions easier
     in filenames and other text fields based on user input, using the python string builtin method
@@ -348,7 +336,7 @@ def set_patterns_and_outfile(logger, valid, var, lev, filepath, field, plotdict)
     return pattern_dict, outfile, fmt
 
 
-def set_map_projection(logger,confproj) -> ccrs.Projection:
+def set_map_projection(confproj) -> ccrs.Projection:
     """
     Creates and returns a map projection based on the dictionary confproj, which contains the user
     settings for the desired map projection. Raises descriptive exception if invalid settings are
@@ -471,43 +459,47 @@ def set_map_projection(logger,confproj) -> ccrs.Projection:
 
     raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{valid}")
 
-def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False) -> logging.Logger:
+def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False):
     """
     Sets up logging, printing high-priority (INFO and higher) messages to screen, and printing all
     messages with detailed timing and routine info in the specified text file.
 
     If debug = True, print all messages to both screen and log file.
     """
-    logger = logging.getLogger("my_logger")
-    logger.setLevel(logging.DEBUG)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
 
-    # Create handlers
+    # Prevent duplicate handlers if called more than once
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Console handler
     console = logging.StreamHandler()
-    fh = logging.FileHandler(logfile)
+    console.setLevel(logging.DEBUG if debug else logging.INFO)
+    console_formatter = logging.Formatter("%(levelname)-8s %(message)s")
+    console.setFormatter(console_formatter)
 
-    # Set the log level for each handler
-    if debug:
-        console.setLevel(logging.DEBUG)
-    else:
-        console.setLevel(logging.INFO)
-    fh.setLevel(logging.DEBUG)  # Log DEBUG and above to the file
+    # File handler
+    fh = logging.FileHandler(logfile, mode="w")
+    fh.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        "%(asctime)s %(name)s.%(funcName)s %(levelname)-8s %(message)s",
+        "%Y-%m-%d %H:%M:%S",
+    )
+    fh.setFormatter(file_formatter)
 
-    formatter = logging.Formatter("%(asctime)s %(funcName)-16s %(levelname)-8s %(message)s", "%Y-%m-%d %H:%M:%S")
-
-    # Set format for file handler
-    fh = logging.FileHandler(logfile, mode='w')
-    fh.setFormatter(formatter)
-
-    # Add handlers to the logger
-    logger.addHandler(console)
-    logger.addHandler(fh)
-
-    logger.debug("Logging set up successfully")
-
-    return logger
+    # Add handlers
+    root_logger.addHandler(console)
+    root_logger.addHandler(fh)
 
 
-def setup_config(logger: logging.Logger, config: str, default: str="default_options.yaml") -> dict:
+    # Suppress debug prints from matplotlib
+    logging.getLogger("matplotlib").setLevel(logging.INFO)
+
+    root_logger.debug("Logging configured")
+
+
+def setup_config(config: str, default: str="default_options.yaml") -> dict:
     """
     Function for reading in dictionary of configuration settings, and performing basic checks
     on those settings
@@ -515,7 +507,6 @@ def setup_config(logger: logging.Logger, config: str, default: str="default_opti
     Args:
         config  (str) : The full path of the user config file
         default (str) : The full path of the default config file
-        logger        : logging.Logger object
 
     Returns:
         dict: A dictionary of the configuration settings after applying defaults and user settings,
@@ -572,11 +563,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    logger=setup_logging(debug=args.debug)
+    setup_logging(debug=args.debug)
 
 
     # Load settings from config file
-    expt_config=setup_config(logger,args.config)
+    expt_config=setup_config(args.config)
 
     if os.path.isfile(expt_config["data"]["filename"]):
         files = [expt_config["data"]["filename"]]
@@ -592,7 +583,7 @@ if __name__ == "__main__":
 
     for f in files:
         # Open specified file and load dataset
-        dataset,grid=load_dataset(logger,f,expt_config["data"]["gridfile"])
+        dataset,grid=load_dataset(f,expt_config["data"]["gridfile"])
 
 
         logger.debug(f"{dataset=}")
@@ -601,7 +592,7 @@ if __name__ == "__main__":
         logger.debug(f"Available data variables:\n{list(dataset.data_vars.keys())}")
 
         # Set up plotit() arguments
-        plotargs=setupargs(logger,expt_config,dataset,grid,f)
+        plotargs=setupargs(expt_config,dataset,grid,f)
         logger.debug(f"{plotargs=}")
         # Make the plots!
         if args.procs > 1:
