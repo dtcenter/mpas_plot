@@ -67,28 +67,52 @@ def setupargs(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str):
 
 def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
     """
-    A wrapper for plotit() that handles errors for Python multiprocessing
+    A wrapper for plotit() that handles errors for Python multiprocessing, as well as preprocessing the
+    UxDataSet into a UxDataArray with just the variable and timestep we want to plot
     """
 
     logger.info(f"Starting plotit() for {var=}, {lev=}")
 
-    try:
-        plotit(config_d,uxds,grid,var,lev,filepath,proj)
-    except Exception as e:
-        logger.error(f'Could not plot variable {var}, level {lev}')
-        logger.debug(f"Arguments to plotit():\n{config_d=}\n{uxds=}\n{grid=}\n"\
-                      f"{var=}\n{lev=}\n{filepath=}\n{proj=}")
-        logger.error(f"{traceback.print_tb(e.__traceback__)}:")
-        logger.error(f"{type(e).__name__}:")
-        logger.error(e)
+    if var not in list(uxds.data_vars.keys()):
+        msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
+        raise ValueError(msg)
+
+    field=uxds[var]
 
 
-def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
+#    if "Time" in uxds.dims and uxds.sizes.get("Time", 0) > 1:
+#        logger.info("Dataset has multiple timesteps — looping over Time")
+#        for i in range(uxds.sizes["Time"]):
+#            # select the i-th time as an xarray.Dataset
+#            ds_i = uxds.isel(Time=i)
+#
+#            # re-wrap as UxDataset so grid info stays attached
+#            uxds = ux.UxDataset.from_xarray(ds_i, uxgrid=uxds.uxgrid)
+#
+#    else:
+#        logger.info("Single timestep — plotting directly")
+
+    # If multiple timesteps in a dataset, loop over times
+    if "Time" in field.dims:
+        for i in range(uxds.sizes["Time"]):
+            logger.info(f"Plotting time step {i}")
+            try:
+                plotit(config_d,field.isel(Time=i),grid,var,lev,filepath,proj)
+            except Exception as e:
+                logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
+                logger.debug(f"Arguments to plotit():\n{config_d=}\n{field.isel(Time=i)=}\n{grid=}\n"\
+                              f"{var=}\n{lev=}\n{filepath=}\n{proj=}")
+                logger.error(f"{traceback.print_tb(e.__traceback__)}:")
+                logger.error(f"{type(e).__name__}:")
+                logger.error(e)
+
+
+def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
     """
     The main program that makes the plot(s)
     Args:
         config_d     (dict): A dictionary containing experiment settings
-        uxds (ux.UxDataset): A ux.UxDataset object containing the data to be plotted
+        uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted
         grid      (ux.Grid): A ux.Grid object containing the unstructured grid information
         filepath      (str): The filename of the input data that was read into the ux objects
         proj (cartopy.crs.proj): A cartopy projection
@@ -98,27 +122,16 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,fil
     """
 
     plotstart = time.time()
-    if var not in list(uxds.data_vars.keys()):
-        msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
-        raise ValueError(msg)
-    logger.info(f"Plotting variable {var}")
-    logger.debug(f"{uxds[var]=}")
-    field=uxds[var]
 
-    # If multiple timesteps in a file, only plot the first for now
-    if "Time" in field.dims:
-        logger.info("Plotting first time step")
-        field=field.isel(Time=0)
-
-    if "nVertLevels" in field.dims:
-        varslice = field.isel(nVertLevels=lev)
+    if "nVertLevels" in uxda.dims:
+        varslice = uxda.isel(nVertLevels=lev)
     else:
         if lev > 0:
             logger.error(f"Variable {var} only has one vertical level; can not plot {lev=}")
             return
-        varslice = field
+        varslice = uxda
 
-    if "n_face" not in field.dims:
+    if "n_face" not in uxda.dims:
         logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
         varslice = varslice.remap.inverse_distance_weighted(grid,
                                                           remap_to='face centers', k=3)
@@ -212,7 +225,7 @@ def plotit(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,fil
 
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
-    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,field,config_d["plot"])
+    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,config_d["plot"])
 
     pc.set_edgecolor(config_d['plot']['edges']['color'])
     pc.set_linewidth(config_d['plot']['edges']['width'])
@@ -305,11 +318,11 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, plotdict):
         pattern_dict.update({
             "varln": field.attrs["long_name"]
         })
-    if field.coords.get("Time"):
-        pattern_dict.update({
-            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
-            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
-        })
+#    if field.coords.get("Time"):
+#        pattern_dict.update({
+#            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
+#            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
+#        })
 
 
     # Check if the output file already exists, if so act according to plot:exists setting

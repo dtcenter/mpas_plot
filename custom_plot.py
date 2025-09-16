@@ -77,12 +77,21 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
     datasets = []
 
     for f in datafiles:
-        # Open data file lazily
+        # Open data file lazily (metadata only, no data read yet)
         ds_raw = xr.open_dataset(f, decode_cf=False, chunks={})
 
+        # Check that all requested vars exist
+        missing = [v for v in vars_to_keep if v not in ds_raw.variables]
+        if missing:
+            raise KeyError(
+                f"File {f} is missing required variables: {missing}. "
+                f"Available variables: {list(ds_raw.variables)}"
+            )
+
+        ds_raw.close()
+
         # Identify variables to drop
-        keep_vars = set(vars_to_keep) | {"Time"}  # always keep Time
-        drop_vars = [v for v in ds_raw.data_vars if v not in keep_vars]
+        drop_vars = [v for v in ds_raw.data_vars if v not in vars_to_keep]
 
         ds = ux.open_dataset(
             gridfile,
@@ -91,17 +100,6 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
             chunks={},
             decode_cf=False
         )
-
-        # Decode Time
-        if "Time" in ds.data_vars:
-            ds = ds.set_coords("Time")
-            units = ds["Time"].attrs.get("units")
-            if units:
-                calendar = ds["Time"].attrs.get("calendar", "standard")
-                decoded = xr.conventions.times.decode_cf_datetime(
-                    ds["Time"].values, units, calendar
-                )
-                ds = ds.assign_coords(Time=decoded)
 
         datasets.append(ds)
 
@@ -193,7 +191,7 @@ if __name__ == "__main__":
     print(f'{dataset["rain_6hr"]=}')
 
     proj=set_map_projection(expt_config["plot"]["projection"])
-    plotithandler(expt_config,dataset,dataset,"rain_6hr",0,"test",proj)
+    plotithandler(expt_config,dataset,dataset,"rainnc",0,"test",proj)
 
 #    proj=set_map_projection(expt_config["dataset"]["vars"]["rainnc"]["plot"]["projection"])
 #    plotithandler(expt_config["dataset"]["vars"]["rainnc"]["plot"],dataset,dataset,"rainnc",1,"test",proj)

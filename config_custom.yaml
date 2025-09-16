@@ -96,9 +96,9 @@ dataset:
         - "rainnc"
       plot:
         <<: *default_options
-    refl10cm:
-      source: native
-      plot:
-        <<: *default_options
-        colormap: radar_refl
+#    refl10cm:
+#      source: native
+#      plot:
+#        <<: *default_options
+#        colormap: radar_refl
 
