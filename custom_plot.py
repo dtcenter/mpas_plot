@@ -27,9 +27,24 @@ logger = logging.getLogger(__name__)
 # =====================
 # User-defined derived functions
 # =====================
-def diff_prev_timestep(x1, x2):
-    """Example: difference along Time"""
-    return x1 - x2
+def diff_prev_timestep(field: ux.UxDataArray, dim: str = "Time") -> ux.UxDataArray:
+    """
+    Return timestep-to-timestep differences along `dim`.
+    First timestep is filled with zeros.
+    """
+    # Compute differences along Time
+    result = field.diff(dim=dim, n=1)
+
+#    # Pad with zeros for the first timestep
+#    first = xr.zeros_like(field.isel({dim: 0}))
+#    result = xr.concat([first, diffs], dim=dim)
+#
+#    # Preserve grid reference if available
+#    if hasattr(field, "uxgrid"):
+#        result = result.assign_coords(field.coords)
+#        result.uxgrid = field.uxgrid
+
+    return result
 
 def sum_fields(x1, x2):
     return x1 + x2
@@ -129,6 +144,7 @@ def compute_derived(var_defs, ds, name):
         # Recursively get input arrays
         input_arrays = [compute_derived(var_defs, ds, v) for v in inputs]
 
+
         # Lookup function
         func = DERIVED_FUNCTIONS.get(func_name)
         if func is None:
@@ -188,8 +204,6 @@ if __name__ == "__main__":
     # Load all data to plot as a single dataset
     dataset=load_full_dataset(expt_config["dataset"])
 
-    print(f'{dataset=}')
-    print(f'{dataset["rain_6hr"]=}')
 
     proj=set_map_projection(expt_config["plot"]["projection"])
     plotithandler(expt_config,dataset,dataset,"rainnc",0,"test",proj)
