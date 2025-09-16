@@ -1,0 +1,104 @@
+data:
+  filename: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
+  interval:
+#  filename: ../hires_data/diag.2020-08-10_12.00.00.nc
+#  gridfile: ../hires_data/history.2020-08-10_12.00.00.nc
+# filename: /glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-02_00.00.00.nc
+#  gridfile: /scratch1/BMC/hmtb/kavulich/MPAS/plotting_scripts/DTC_fork/mpas_app/ush/plotting/history.2023-09-15_09.00.00.nc
+  var:
+#         - qv
+#         - rainnc
+         - kpbl
+
+plot: &default_options
+  # {var} = Variable name
+  # {lev} = Variable level
+  # {varln} = Variable "long name" (not recommended for filenames since these often contain spaces)
+  # {units} = Variable units
+  # {filename} = Name of file being read for plotted data
+  # {fnme} = Name of file (minus extension) being read for plotted data
+  # {date} = The date of plotted data, in %Y-%m-%d format
+  # {time} = The time of plotted data, in %H:%M:%S format
+
+  filename: 'custom_vars_testing/{var}_{lev}.png'
+  title:
+    text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+    fontsize: 8
+  edges:
+    #    color: black
+    color: face
+    # set width to 0 to have no borders
+    width: 0.1
+  # Settings for plotting political boundaries. To disable political boundaries, specify "boundaries:" with no options
+  boundaries:
+    # Level of political boundaries to plot. Level 0 is national boundaries, Level 1 is sub-national boundaries (e.g.
+    # states, provinces, etc.), Level 2 is county boundaries (US only); counties require 10m scale
+    detail: 1
+    # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
+    scale: '10m'
+
+    color: ['k','gray','lightgray']
+
+  # Settings for plotting coastlines. To disable coastlines, specify "coastlines:" with no options
+  coastlines:
+    # Most standard Matplotlib arguments for shapes will work here, but I haven't figured out good documentation on which.
+    # The ones listed here work, but likely a lot more customization can happen here.
+    scale: '10m'
+    color: 'k'
+    linewidth: 0.2
+  lakes:
+    # Most standard Matplotlib arguments for shapes will work here, but I haven't figured out good documentation on which.
+    # The ones listed here work, but likely a lot more customization can happen here.
+    scale: '10m'
+    enable: False
+    color: 'lightblue'
+    linewidth: 0.2
+  colorbar:
+    orientation: vertical
+    label: 'Units: {units}'
+    fontsize: 8
+  # Colormap for output from Matplotlib. Reference: https://matplotlib.org/stable/gallery/color/colormap_reference.html
+  colormap: "viridis"
+  # colormap: "gist_rainbow"
+#  colormap: "gist_ncar"
+#  colormap: radar_refl
+  dpi: 300
+  # figheight: 4
+  # figwidth: 8
+  figwidth: 5
+  projection:
+    #    projection: Mercator
+    projection: PlateCarree
+#    latrange:
+#      - 40
+#      - 45
+#    lonrange:
+#      - -97
+#      - -88
+
+dataset:
+  files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025*nc'
+  gridfile: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
+  vars:
+    precipw:
+      source: native
+      plot:
+        <<: *default_options
+    rainnc:
+      source: native
+      plot:
+        <<: *default_options
+    rain_6hr:
+      source: derived
+      function: diff_prev_timestep
+      inputs:
+        - "rainnc"
+        - "rainnc"
+      plot:
+        <<: *default_options
+    refl10cm:
+      source: native
+      plot:
+        <<: *default_options
+        colormap: radar_refl
+
