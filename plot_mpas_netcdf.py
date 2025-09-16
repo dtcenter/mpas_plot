@@ -11,6 +11,7 @@ import os
 import sys
 import time
 import traceback
+from datetime import datetime
 from multiprocessing import Pool
 
 print("Importing uxarray; this may take a while...")
@@ -96,8 +97,13 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if "Time" in field.dims:
         for i in range(uxds.sizes["Time"]):
             logger.info(f"Plotting time step {i}")
+            ftime=None
+            if "xtime" in uxds:
+                ftime=uxds["xtime"].isel(Time=i)
+                ftime_str = b"".join(ftime.values).decode("utf-8").strip()
+                ftime_dt = datetime.strptime(ftime_str, "%Y-%m-%d_%H:%M:%S")
             try:
-                plotit(config_d,field.isel(Time=i),grid,var,lev,filepath,proj)
+                plotit(config_d,field.isel(Time=i),grid,var,lev,filepath,proj,ftime_dt)
             except Exception as e:
                 logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
                 logger.debug(f"Arguments to plotit():\n{config_d=}\n{field.isel(Time=i)=}\n{grid=}\n"\
@@ -107,7 +113,7 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
                 logger.error(e)
 
 
-def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
+def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,filepath: str,proj,ftime) -> None:
     """
     The main program that makes the plot(s)
     Args:
@@ -116,12 +122,14 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
         grid      (ux.Grid): A ux.Grid object containing the unstructured grid information
         filepath      (str): The filename of the input data that was read into the ux objects
         proj (cartopy.crs.proj): A cartopy projection
+        ftime    (datetime): The forecast valid time as a datetime object
 
     Returns:
         None
     """
 
     plotstart = time.time()
+    print(f"{ftime=}")
 
     if "nVertLevels" in uxda.dims:
         varslice = uxda.isel(nVertLevels=lev)
@@ -225,7 +233,7 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
 
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
-    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,config_d["plot"])
+    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,config_d["plot"])
 
     pc.set_edgecolor(config_d['plot']['edges']['color'])
     pc.set_linewidth(config_d['plot']['edges']['width'])
@@ -264,7 +272,7 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
     logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
 
 
-def set_patterns_and_outfile(valid, var, lev, filepath, field, plotdict):
+def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     """
     Create and return a dictionary of substituting patterns to make string substitutions easier
     in filenames and other text fields based on user input, using the python string builtin method
@@ -318,11 +326,11 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, plotdict):
         pattern_dict.update({
             "varln": field.attrs["long_name"]
         })
-#    if field.coords.get("Time"):
-#        pattern_dict.update({
-#            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
-#            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
-#        })
+    if ftime:
+        pattern_dict.update({
+            "date": ftime.strftime('%Y-%m-%d'),
+            "time": ftime.strftime('%H:%M:%S')
+        })
 
 
     # Check if the output file already exists, if so act according to plot:exists setting

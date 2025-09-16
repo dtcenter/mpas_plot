@@ -91,7 +91,8 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
         ds_raw.close()
 
         # Identify variables to drop
-        drop_vars = [v for v in ds_raw.data_vars if v not in vars_to_keep]
+        keep_vars = set(vars_to_keep) | {"xtime"}  # always keep xtime
+        drop_vars = [v for v in ds_raw.data_vars if v not in keep_vars]
 
         ds = ux.open_dataset(
             gridfile,

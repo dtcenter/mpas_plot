@@ -77,7 +77,7 @@ plot: &default_options
 #      - -88
 
 dataset:
-  files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025*nc'
+  files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-07*nc'
   gridfile: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
   vars:
     precipw:
