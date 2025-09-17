@@ -1,6 +1,6 @@
 dataset:
   #files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/diag.2025-05-0*nc'
-  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/diag.2025-05-01_01.00.00.nc'
+  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/diag.2025-05-*.nc'
   #gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.init.nc'
   gridfile: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-01_00.00.00.nc'
   vars:
@@ -17,7 +17,9 @@ dataset:
       function: diff_prev_timestep
       inputs:
         - "rainnc"
-      plot:
+      attrs:
+        long_name: "1-hour total grid-scale precipitation"
+        units: "mm"
     refl10cm_1km:
       source: native
       plot:
@@ -33,7 +35,7 @@ plot:
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: 'new_capability_testing/{var}_{lev}_{date}_{time}.png'
+  filename: 'new_capability_parallel_testing/{var}_{lev}_{date}_{time}.png'
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8

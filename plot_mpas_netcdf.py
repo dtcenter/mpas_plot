@@ -139,6 +139,7 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,p
                                                           remap_to='face centers', k=3)
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
+    print(f"{varslice=}")
     if plotdict["periodic_bdy"]:
         logger.info("Creating polycollection with periodic_bdy=True")
         logger.info("NOTE: This option can be very slow for large domains")
@@ -544,6 +545,9 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
 
     # Update the dict read from defaults file with the dict read from user config file
     expt_config.update_values(user_config)
+
+    if not expt_config["dataset"].get("gridfile"):
+        expt_config["dataset"]["gridfile"]=""
 
     # Perform consistency checks
     if not expt_config["data"].get("lev"):

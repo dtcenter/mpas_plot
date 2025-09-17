@@ -206,6 +206,8 @@ def load_full_dataset(dsconf):
             print(f"{varname=}")
             print(f"{ds[varname]=}")
 
+    ds.load()
+
     return ds
 
 
@@ -264,14 +266,17 @@ if __name__ == "__main__":
     setup_logging(debug=args.debug)
 
     # Load settings from config file
+    logger.info('Loading user config settings')
     expt_config=setup_config(args.config)
 
     # Load all data to plot as a single dataset
+    logger.info('Loading data from netcdf files')
     dataset=load_full_dataset(expt_config["dataset"])
 
     logger.debug(f'{dataset=}')
 
     # Set up plotit() arguments
+    logger.info('Setting up plot tasks')
     plotargs=setupargs(expt_config,dataset)
 
     logger.debug(f"{plotargs=}")
