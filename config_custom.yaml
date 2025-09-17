@@ -1,16 +1,29 @@
-data:
-  filename: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
-  interval:
-#  filename: ../hires_data/diag.2020-08-10_12.00.00.nc
-#  gridfile: ../hires_data/history.2020-08-10_12.00.00.nc
-# filename: /glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-02_00.00.00.nc
-#  gridfile: /scratch1/BMC/hmtb/kavulich/MPAS/plotting_scripts/DTC_fork/mpas_app/ush/plotting/history.2023-09-15_09.00.00.nc
-  var:
-#         - qv
-#         - rainnc
-         - kpbl
+dataset:
+  #files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/diag.2025-05-0*nc'
+  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/diag.2025-05-01_01.00.00.nc'
+  #gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.init.nc'
+  gridfile: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-01_00.00.00.nc'
+  vars:
+    precipw:
+      source: native
+      plot:
+        colormap: gist_ncar
+      lev: all
+    rainnc:
+      source: native
+      plot:
+    rain_1hr:
+      source: derived
+      function: diff_prev_timestep
+      inputs:
+        - "rainnc"
+      plot:
+    refl10cm_1km:
+      source: native
+      plot:
+        colormap: radar_refl
 
-plot: &default_options
+plot:
   # {var} = Variable name
   # {lev} = Variable level
   # {varln} = Variable "long name" (not recommended for filenames since these often contain spaces)
@@ -20,7 +33,7 @@ plot: &default_options
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: 'custom_vars_testing/{var}_{lev}.png'
+  filename: 'new_capability_testing/{var}_{lev}_{date}_{time}.png'
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
@@ -33,7 +46,7 @@ plot: &default_options
   boundaries:
     # Level of political boundaries to plot. Level 0 is national boundaries, Level 1 is sub-national boundaries (e.g.
     # states, provinces, etc.), Level 2 is county boundaries (US only); counties require 10m scale
-    detail: 1
+    detail: 2
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '10m'
 
@@ -75,29 +88,4 @@ plot: &default_options
 #    lonrange:
 #      - -97
 #      - -88
-
-dataset:
-  files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-0*nc'
-  gridfile: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
-  vars:
-    precipw:
-      source: native
-      plot:
-        <<: *default_options
-    rainnc:
-      source: native
-      plot:
-        <<: *default_options
-    rain_6hr:
-      source: derived
-      function: diff_prev_timestep
-      inputs:
-        - "rainnc"
-      plot:
-        <<: *default_options
-#    refl10cm:
-#      source: native
-#      plot:
-#        <<: *default_options
-#        colormap: radar_refl
 

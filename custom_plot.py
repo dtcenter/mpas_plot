@@ -3,6 +3,7 @@
 Script for plotting MPAS input and/or output in native NetCDF format"
 """
 import argparse
+import copy
 import glob
 import logging
 import sys
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 # =====================
 def diff_prev_timestep(field: ux.UxDataArray, dim: str = "Time") -> ux.UxDataArray:
     """
-    Return timestep-to-timestep differences along `dim`.
+    Return timestep-to-timestep differences for input field.
     First timestep is filled with zeros.
     """
     # Compute differences along Time
@@ -91,6 +92,21 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 
     datasets = []
 
+    # Attempt to read gridfile and handle error gracefully if grid info not available
+    if not gridfile:
+        # If no gridfile provided (empty string), read grid from first data file
+        gf=datafiles[0]
+    else:
+        gf=gridfile
+    try:
+        ux.open_grid(gf)
+    except Exception as e:
+        logger.error(f'Could not read grid information from {gf}')
+        if not gridfile:
+            logger.error("Specify dataset:gridfile as a file that contains grid information")
+            logger.error("For MPAS this is usually a history file or an init.nc file")
+        raise e
+
     for f in datafiles:
         # Open data file lazily (metadata only, no data read yet)
         ds_raw = xr.open_dataset(f, decode_cf=False, chunks={})
@@ -133,6 +149,7 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 # =====================
 def compute_derived(var_defs, ds, name):
     cfg = var_defs[name]
+    print(f"{cfg=}")
 
     if cfg["source"] == "native":
         return ds[name]
@@ -140,9 +157,12 @@ def compute_derived(var_defs, ds, name):
     elif cfg["source"] == "derived":
         func_name = cfg["function"]
         inputs = cfg.get("inputs", [])
+        print(f"{func_name=}")
+        print(f"{inputs=}")
 
         # Recursively get input arrays
         input_arrays = [compute_derived(var_defs, ds, v) for v in inputs]
+        print(f"{input_arrays=}")
 
 
         # Lookup function
@@ -152,6 +172,7 @@ def compute_derived(var_defs, ds, name):
 
         # Compute derived variable
         result = func(*input_arrays)
+        print(f"{result=}")
 
         # Attach metadata if provided
         attrs = cfg.get("attrs", {})
@@ -161,26 +182,70 @@ def compute_derived(var_defs, ds, name):
         return result
 
 # =====================
-# Load dataset from YAML config
+# Load dataset based on user settings in dataset config
 # =====================
-def load_full_dataset(config):
-    files = sorted(glob.glob(config["files"]))
-    var_defs = config["vars"]
+def load_full_dataset(dsconf):
+    files = sorted(glob.glob(dsconf["files"]))
+    var_defs = dsconf["vars"]
 
     # 1. Determine all native variables needed
     readvars = set()
     for varname in var_defs:
         readvars |= get_vars_to_read(var_defs, varname)
 
+    # If no gridfile provided, set to empty string and handle in open_ux_subset()
+    if not dsconf.get("gridfile"):
+        dsconf["gridfile"]=""
     # 2. Open UxDataset lazily
-    ds = open_ux_subset(config["gridfile"], files, list(readvars))
+    ds = open_ux_subset(dsconf["gridfile"], files, list(readvars))
 
     # 3. Compute derived variables and add to ds
     for varname, cfg in var_defs.items():
         if cfg["source"] == "derived":
             ds[varname] = compute_derived(var_defs, ds, varname)
+            print(f"{varname=}")
+            print(f"{ds[varname]=}")
 
     return ds
+
+
+def setupargs(config_d: dict,uxds: ux.UxDataset):
+    """ 
+    Sets up the argument list for plotit to allow for parallelization with Python starmap
+    """ 
+    
+    args = [] 
+
+    # Set up map projection properties
+    proj=set_map_projection(expt_config["plot"]["projection"])
+
+    for var in config_d["dataset"]["vars"]:
+        # Update each variable's plot settings dictionary
+        plotdict=copy.copy(config_d["plot"])
+        if update_dict:=config_d["dataset"]["vars"][var].get("plot"):
+            plotdict.update(update_dict)
+        config_d["dataset"]["vars"][var]["plot"]=plotdict
+
+        vardict=config_d["dataset"]["vars"][var]
+        # Plot all levels by default
+        if not vardict.get("lev"):
+            vardict["lev"]="all"
+        if vardict["lev"] in [ ["all"], "all" ]:
+            if "nVertLevels" in uxds[var].dims:
+                levels = range(0,len(uxds[var]["nVertLevels"]))
+            else:
+                levels = [0]
+        elif isinstance(vardict["lev"], list):
+            levels = vardict["lev"]
+        elif isinstance(vardict["lev"], int):
+            levels = [vardict["lev"]]
+        else:
+            raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
+
+        for lev in levels:
+            args.append( (config_d,uxds,var,lev,proj) )
+
+    return args
 
 if __name__ == "__main__":
 
@@ -204,9 +269,20 @@ if __name__ == "__main__":
     # Load all data to plot as a single dataset
     dataset=load_full_dataset(expt_config["dataset"])
 
+    logger.debug(f'{dataset=}')
 
-    proj=set_map_projection(expt_config["plot"]["projection"])
-    plotithandler(expt_config,dataset,dataset,"rainnc",0,"test",proj)
+    # Set up plotit() arguments
+    plotargs=setupargs(expt_config,dataset)
+
+    logger.debug(f"{plotargs=}")
+    # Make the plots!
+    if args.procs > 1:
+        logger.info(f"Plotting in parallel with {args.procs} tasks")
+    with Pool(processes=args.procs) as pool:
+        pool.starmap(plotithandler, plotargs)
+
+#    proj=set_map_projection(expt_config["plot"]["projection"])
+#    plotithandler(expt_config,dataset,dataset,"rainnc",0,"test",proj)
 
 #    proj=set_map_projection(expt_config["dataset"]["vars"]["rainnc"]["plot"]["projection"])
 #    plotithandler(expt_config["dataset"]["vars"]["rainnc"]["plot"],dataset,dataset,"rainnc",1,"test",proj)

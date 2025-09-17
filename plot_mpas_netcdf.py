@@ -66,7 +66,7 @@ def setupargs(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str):
     return args
 
 
-def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: int,filepath: str,proj) -> None:
+def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,proj) -> None:
     """
     A wrapper for plotit() that handles errors for Python multiprocessing, as well as preprocessing the
     UxDataSet into a UxDataArray with just the variable and timestep we want to plot
@@ -75,23 +75,12 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     logger.info(f"Starting plotit() for {var=}, {lev=}")
 
     if var not in list(uxds.data_vars.keys()):
-        msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
+        msg = f"{var=} is not a valid variable\n\n(you never should have made it this far though)\n\n{uxds.data_vars}"
         raise ValueError(msg)
 
     field=uxds[var]
+    files = sorted(glob.glob(config_d["dataset"]["files"]))
 
-
-#    if "Time" in uxds.dims and uxds.sizes.get("Time", 0) > 1:
-#        logger.info("Dataset has multiple timesteps — looping over Time")
-#        for i in range(uxds.sizes["Time"]):
-#            # select the i-th time as an xarray.Dataset
-#            ds_i = uxds.isel(Time=i)
-#
-#            # re-wrap as UxDataset so grid info stays attached
-#            uxds = ux.UxDataset.from_xarray(ds_i, uxgrid=uxds.uxgrid)
-#
-#    else:
-#        logger.info("Single timestep — plotting directly")
 
     # If multiple timesteps in a dataset, loop over times
     if "Time" in field.dims:
@@ -100,26 +89,31 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
             ftime=None
             if "xtime" in uxds:
                 ftime=uxds["xtime"].isel(Time=i)
-                ftime_str = b"".join(ftime.values).decode("utf-8").strip()
-                ftime_dt = datetime.strptime(ftime_str, "%Y-%m-%d_%H:%M:%S")
+#                print(f"{ftime=}")
+#                print(f"{ftime.values=}")
+#                ftime_str = b"".join(ftime.values).decode("utf-8").strip()
+                ftime_str = "".join(uxds["xtime"].isel(Time=i).values.astype(str))
+                
+                print(f"{ftime_str.strip()=}")
+                ftime_dt = datetime.strptime(ftime_str.strip(), "%Y-%m-%d_%H:%M:%S")
             try:
-                plotit(config_d,field.isel(Time=i),grid,var,lev,filepath,proj,ftime_dt)
+                plotit(config_d,field.isel(Time=i),var,lev,files[i],proj,ftime_dt,config_d['dataset']['vars'][var]['plot'])
             except Exception as e:
                 logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
-                logger.debug(f"Arguments to plotit():\n{config_d=}\n{field.isel(Time=i)=}\n{grid=}\n"\
-                              f"{var=}\n{lev=}\n{filepath=}\n{proj=}")
+                logger.error(f"Arguments to plotit():\n{config_d=}\n{field.isel(Time=i)=}\n"\
+                             f"{var=}\n{lev=}\n{files[i]=}\n{proj=}\n{ftime_dt=}"\
+                             f"{config_d['dataset']['vars'][var]['plot']=}")
                 logger.error(f"{traceback.print_tb(e.__traceback__)}:")
                 logger.error(f"{type(e).__name__}:")
                 logger.error(e)
 
 
-def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,filepath: str,proj,ftime) -> None:
+def plotit(config_d: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,proj,ftime,plotdict) -> None:
     """
     The main program that makes the plot(s)
     Args:
         config_d     (dict): A dictionary containing experiment settings
-        uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted
-        grid      (ux.Grid): A ux.Grid object containing the unstructured grid information
+        uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted and grid information
         filepath      (str): The filename of the input data that was read into the ux objects
         proj (cartopy.crs.proj): A cartopy projection
         ftime    (datetime): The forecast valid time as a datetime object
@@ -141,11 +135,11 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
 
     if "n_face" not in uxda.dims:
         logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
-        varslice = varslice.remap.inverse_distance_weighted(grid,
+        varslice = varslice.remap.inverse_distance_weighted(uxda.uxgrid,
                                                           remap_to='face centers', k=3)
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
-    if config_d["plot"]["periodic_bdy"]:
+    if plotdict["periodic_bdy"]:
         logger.info("Creating polycollection with periodic_bdy=True")
         logger.info("NOTE: This option can be very slow for large domains")
         pc=varslice.to_polycollection(periodic_elements='split')
@@ -155,10 +149,10 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
     pc.set_antialiased(False)
 
     # Handle color mapping
-    cmapname=config_d["plot"]["colormap"]
+    cmapname=plotdict["colormap"]
     if cmapname in plt.colormaps():
         cmap=mpl.colormaps[cmapname]
-        pc.set_cmap(config_d["plot"]["colormap"])
+        pc.set_cmap(plotdict["colormap"])
     elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
         cmap_settings = uwconfig.get_yaml_config(config=colorfile)
         #Overwrite additional settings specified in colormap file
@@ -168,19 +162,19 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
                 # plot:colors is a list of color values for the custom colormap and is handled separately
                 continue
             logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
-            config_d["plot"][setting]=cmap_settings[setting]
+            plotdict[setting]=cmap_settings[setting]
         cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"])
     else:
         raise ValueError(f"Requested color map {cmapname} is not valid")
 
-    if not config_d["plot"]["plot_over"]:
+    if not plotdict["plot_over"]:
         cmap.set_over(alpha=0)
-    if not config_d["plot"]["plot_under"]:
+    if not plotdict["plot_under"]:
         cmap.set_under(alpha=0)
     pc.set_cmap(cmap)
 
-    fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
-                           config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
+    fig, ax = plt.subplots(1, 1, figsize=(plotdict["figwidth"],
+                           plotdict["figheight"]), dpi=plotdict["dpi"],
                            constrained_layout=True,
                            subplot_kw=dict(projection=proj))
 
@@ -188,19 +182,19 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
     validfmts=fig.canvas.get_supported_filetypes()
 
 
-    logger.debug(config_d["plot"]["projection"])
-    logger.debug(f"{config_d['plot']['projection']['lonrange']=}\n{config_d['plot']['projection']['latrange']=}")
-    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
+    logger.debug(plotdict["projection"])
+    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
         logger.info('One or more latitude/longitude range values were not set; plotting full projection')
     else:
-        ax.set_extent([config_d["plot"]["projection"]["lonrange"][0], config_d["plot"]["projection"]["lonrange"][1], config_d["plot"]["projection"]["latrange"][0], config_d["plot"]["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
-    if None not in [ config_d["plot"]["vmin"], config_d["plot"]["vmax"]]:
-        pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
+    if None not in [ plotdict["vmin"], plotdict["vmax"]]:
+        pc.set_clim(plotdict["vmin"],plotdict["vmax"])
 
     #Plot political boundaries if requested
-    if config_d["plot"].get("boundaries"):
-        pb=config_d["plot"]["boundaries"]
+    if plotdict.get("boundaries"):
+        pb=plotdict["boundaries"]
         if pb.get("enable"):
             # Users can set these values to scalars or lists; if scalar provided, re-format to list with three identical values
             for setting in ["color", "linewidth", "scale"]:
@@ -219,45 +213,45 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,grid: ux.Grid,var: str,lev: int,f
                            scale=pb["scale"][0],edgecolor=pb["color"][0],
                            facecolor='none',linewidth=pb["linewidth"][0], name='admin_0_countries'))
     #Plot coastlines if requested
-    if config_d["plot"].get("coastlines"):
-        pcl=config_d["plot"]["coastlines"]
+    if plotdict.get("coastlines"):
+        pcl=plotdict["coastlines"]
         if pcl.get("enable"):
             ax.add_feature(cfeature.NaturalEarthFeature(category='physical',color=pcl["color"],facecolor='none',
                            linewidth=pcl["linewidth"], scale=pcl["scale"], name='coastline'))
     #Plot lakes if requested
-    if config_d["plot"].get("lakes"):
-        pl=config_d["plot"]["lakes"]
+    if plotdict.get("lakes"):
+        pl=plotdict["lakes"]
         if pl.get("enable"):
             ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["color"],facecolor='none',
                            linewidth=pl["linewidth"], scale=pl["scale"], name='lakes'))
 
 
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
-    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,config_d["plot"])
+    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,plotdict)
 
-    pc.set_edgecolor(config_d['plot']['edges']['color'])
-    pc.set_linewidth(config_d['plot']['edges']['width'])
+    pc.set_edgecolor(plotdict['edges']['color'])
+    pc.set_linewidth(plotdict['edges']['width'])
     pc.set_transform(ccrs.PlateCarree())
 
     logger.debug("Adding collection to plot axes")
-    if config_d["plot"]["projection"]["projection"] != "PlateCarree":
-        logger.info(f"Interpolating to {config_d['plot']['projection']['projection']} projection; this may take a while...")
-    if None in config_d["plot"]["projection"]["lonrange"] or None in config_d["plot"]["projection"]["latrange"]:
+    if plotdict["projection"]["projection"] != "PlateCarree":
+        logger.info(f"Interpolating to {plotdict['projection']['projection']} projection; this may take a while...")
+    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
         coll = ax.add_collection(pc, autolim=True)
         ax.autoscale()
     else:
         coll = ax.add_collection(pc)
 
     logger.debug("Configuring plot title")
-    if plottitle:=config_d["plot"]["title"].get("text"):
-        plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
+    if plottitle:=plotdict["title"].get("text"):
+        plt.title(plottitle.format_map(patterns), wrap=True, fontsize=plotdict["title"]["fontsize"])
     else:
         logger.warning("No 'text' field for title specified, creating plot with no title")
 
     logger.debug("Configuring plot colorbar")
-    if config_d["plot"].get("colorbar"):
-        if config_d["plot"].get("colorbar").get("enable"):
-            cb = config_d["plot"]["colorbar"]
+    if plotdict.get("colorbar"):
+        if plotdict.get("colorbar").get("enable"):
+            cb = plotdict["colorbar"]
             cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
             if cb.get("label"):
                 cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
@@ -351,7 +345,7 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
                 i+=1
             logger.info(f"Saving to {outfile} instead")
         else:
-            raise ValueError(f"Invalid option: config_d['plot']['exists']={plotdict['exists']}")
+            raise ValueError(f"Invalid option: plotdict['exists']={plotdict['exists']}")
 
 
     return pattern_dict, outfile, fmt
