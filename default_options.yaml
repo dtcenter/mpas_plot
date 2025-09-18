@@ -14,7 +14,8 @@ data:
   #
   # filename (mandatory):
   # Full or relative path to filename containing MPAS data you wish to plot. Can be a single file,
-  # a glob-able regex pattern match (e.g. /path/to/nc/data/*.nc), or a list of files
+  # a glob-able regex pattern match (e.g. /path/to/nc/data/*.nc), a list of files, or a list of
+  # glob-able regex pattern matches.
   #
   # gridfile:
   # Some MPAS files (usually "diag" files) do not contain grid information; in these cases you

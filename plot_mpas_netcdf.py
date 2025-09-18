@@ -12,6 +12,7 @@ import sys
 import time
 import traceback
 from multiprocessing import Pool
+from pprint import pprint, pformat
 
 print("Importing uxarray; this may take a while...")
 import uxarray as ux
@@ -578,15 +579,28 @@ if __name__ == "__main__":
     # Load settings from config file
     expt_config=setup_config(logger,args.config)
 
-    if os.path.isfile(expt_config["data"]["filename"]):
-        files = [expt_config["data"]["filename"]]
-    elif glob.glob(expt_config["data"]["filename"]):
-        files = sorted(glob.glob(expt_config["data"]["filename"]))
-    elif isinstance(expt_config["data"]["filename"], list):
-        files = expt_config["data"]["filename"]
-    else:
-        raise FileNotFoundError(f"Invalid filename(s) specified:\n{expt_config['data']['filename']}")
+    # Generate list of explicit file paths from the possibly globbed list
+    # of file patterns specified in the config file.
+    filename = expt_config["data"]["filename"]
+    if not isinstance(filename, list):
+        filename = [filename]
 
+    files = []
+    for f in filename:
+        if os.path.isfile(f):
+            files.append(f)
+        else:
+            f_expanded = sorted(glob.glob(f))
+            if f_expanded:
+                files = files + f_expanded
+            else:
+                raise FileNotFoundError(f"Invalid filename(s) specified:\n{f}")
+
+    # Keep only unique elements in file list.
+    files = sorted(list(set(files)))
+
+    logger.info(f"Set of data files to plot is:")
+    logger.info(pformat(files))
     if not expt_config["data"].get("gridfile"):
         expt_config["data"]["gridfile"]=""
 
