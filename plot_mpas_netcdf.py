@@ -110,10 +110,6 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
         None
     """
 
-    filename=os.path.basename(filepath)
-    #filename minus extension
-    fnme=os.path.splitext(filename)[0]
-
     plotstart = time.time()
     if var not in list(uxds.data_vars.keys()):
         msg = f"{var=} is not a valid variable in {filepath}\n\n{uxds.data_vars}"
@@ -150,12 +146,38 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
 
     pc.set_antialiased(False)
 
-    pc.set_cmap(config_d["plot"]["colormap"])
+    # Handle color mapping
+    cmapname=config_d["plot"]["colormap"]
+    if cmapname in plt.colormaps():
+        cmap=mpl.colormaps[cmapname]
+        pc.set_cmap(config_d["plot"]["colormap"])
+    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
+        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
+        #Overwrite additional settings specified in colormap file
+        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
+        for setting in cmap_settings:
+            if setting == "colors":
+                # plot:colors is a list of color values for the custom colormap and is handled separately
+                continue
+            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
+            config_d["plot"][setting]=cmap_settings[setting]
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"])
+    else:
+        raise ValueError(f"Requested color map {cmapname} is not valid")
+
+    if not config_d["plot"]["plot_over"]:
+        cmap.set_over(alpha=0)
+    if not config_d["plot"]["plot_under"]:
+        cmap.set_under(alpha=0)
+    pc.set_cmap(cmap)
 
     fig, ax = plt.subplots(1, 1, figsize=(config_d["plot"]["figwidth"],
                            config_d["plot"]["figheight"]), dpi=config_d["plot"]["dpi"],
                            constrained_layout=True,
                            subplot_kw=dict(projection=proj))
+
+    # Check the valid file formats supported for this figure
+    validfmts=fig.canvas.get_supported_filetypes()
 
 
     logger.debug(config_d["plot"]["projection"])
@@ -168,93 +190,42 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if None not in [ config_d["plot"]["vmin"], config_d["plot"]["vmax"]]:
         pc.set_clim(config_d["plot"]["vmin"],config_d["plot"]["vmax"])
 
+    #Plot political boundaries if requested
+    if config_d["plot"].get("boundaries"):
+        pb=config_d["plot"]["boundaries"]
+        if pb.get("enable"):
+            # Users can set these values to scalars or lists; if scalar provided, re-format to list with three identical values
+            for setting in ["color", "linewidth", "scale"]:
+                if type(pb[setting]) is not list:
+
+                    pb[setting]=[pb[setting],pb[setting],pb[setting]]
+            if pb["detail"]==2:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=pb["scale"][2],edgecolor=pb["color"][2],
+                               facecolor='none',linewidth=pb["linewidth"][2], name='admin_2_counties'))
+            if pb["detail"]>0:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=pb["scale"][1],edgecolor=pb["color"][1],
+                               facecolor='none',linewidth=pb["linewidth"][1], name='admin_1_states_provinces'))
+            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                           scale=pb["scale"][0],edgecolor=pb["color"][0],
+                           facecolor='none',linewidth=pb["linewidth"][0], name='admin_0_countries'))
     #Plot coastlines if requested
-    if config_d["plot"]["coastlines"]:
-        ax.add_feature(cfeature.NaturalEarthFeature(category='physical',
-                       **config_d["plot"]["coastlines"], name='coastline'))
-    if config_d["plot"]["boundaries"]:
-        ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                       scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                       facecolor='none',linewidth=0.2, name='admin_0_countries'))
-        if config_d["plot"]["boundaries"]["detail"]>0:
-            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                           scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                           facecolor='none',linewidth=0.2, name='admin_1_states_provinces'))
-        if config_d["plot"]["boundaries"]["detail"]==2:
-            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
-                           scale=config_d["plot"]["boundaries"]["scale"],edgecolor=config_d["plot"]["boundaries"]["color"],
-                           facecolor='none',linewidth=0.2, name='admin_2_counties'))
+    if config_d["plot"].get("coastlines"):
+        pcl=config_d["plot"]["coastlines"]
+        if pcl.get("enable"):
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',color=pcl["color"],facecolor='none',
+                           linewidth=pcl["linewidth"], scale=pcl["scale"], name='coastline'))
+    #Plot lakes if requested
+    if config_d["plot"].get("lakes"):
+        pl=config_d["plot"]["lakes"]
+        if pl.get("enable"):
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["color"],facecolor='none',
+                           linewidth=pl["linewidth"], scale=pl["scale"], name='lakes'))
 
-    #Set file format based on filename or manual settings
-    validfmts=fig.canvas.get_supported_filetypes()
-    outfile=config_d['plot']['filename']
-    if "." in os.path.basename(outfile):
-        #output filename and extension
-        outfnme,fmt=os.path.splitext(outfile)
-        fmt=fmt[1:]
-        if config_d["plot"]["format"] is not None:
-            if fmt != config_d["plot"]["format"]:
-                raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
-                                 f"{config_d['plot']['format']=}\n" +
-                                 f"{config_d['plot']['filename']=}")
-    else:
-        outfnme=outfile
-        if config_d["plot"]["format"] is not None:
-            fmt=config_d["plot"]["format"]
-        else:
-            logger.warning("No output file format specified; defaulting to PNG")
-            fmt='png'
 
-    if fmt not in validfmts:
-        raise ValueError(f"Invalid file format requested: {fmt}\n" +
-                         f"Valid formats are:\n{validfmts}")
-
-    # Create a dict of substitutable patterns to make string substitutions easier
-    # using the python string builtin method format_map()
-    patterns = {
-        "var": var,
-        "lev": lev,
-        "units": "no_Units",
-        "varln": "no_long_name",
-        "filename": filename,
-        "fnme": fnme,
-        "proj": config_d["plot"]["projection"]["projection"],
-        "date": "no_Time_dimension",
-        "time": "no_Time_dimension"
-    }
-    if field.attrs.get("units"):
-        patterns.update({
-            "units": field.attrs["units"],
-        })
-    if field.attrs.get("long_name"):
-        patterns.update({
-            "varln": field.attrs["long_name"]
-        })
-    if field.coords.get("Time"):
-        patterns.update({
-            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
-            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
-        })
-
-    # Check if the file already exists, if so act according to plot:exists setting
-    outfnme=outfnme.format_map(patterns)
-    outfile=f"{outfnme.format_map(patterns)}.{fmt}"
-    if os.path.isfile(outfile):
-        if config_d["plot"]["exists"]=="overwrite":
-            logger.info(f"Overwriting existing file {outfile}")
-        elif config_d["plot"]["exists"]=="abort":
-            raise FileExistsError(f"{outfile}\n"
-                  "to change this behavior see plot:exists setting in config file")
-        elif config_d["plot"]["exists"]=="rename":
-            logger.info(f"File exists: {outfile}")
-            i=0
-            # I love when I get to use the walrus operator :D
-            while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
-                logger.debug(f"File exists: {outfile}")
-                i+=1
-            logger.info(f"Saving to {outfile} instead")
-        else:
-            raise ValueError(f"Invalid option: {config_d['plot']['exists']}")
+    # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
+    patterns,outfile,fmt = set_patterns_and_outfile(logger,validfmts,var,lev,filepath,field,config_d["plot"])
 
     pc.set_edgecolor(config_d['plot']['edges']['color'])
     pc.set_linewidth(config_d['plot']['edges']['width'])
@@ -273,15 +244,16 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     if plottitle:=config_d["plot"]["title"].get("text"):
         plt.title(plottitle.format_map(patterns), wrap=True, fontsize=config_d["plot"]["title"]["fontsize"])
     else:
-        logger.warning("No text field for title specified, creating plot with no title")
+        logger.warning("No 'text' field for title specified, creating plot with no title")
 
     logger.debug("Configuring plot colorbar")
     if config_d["plot"].get("colorbar"):
-        cb = config_d["plot"]["colorbar"]
-        cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
-        if cb.get("label"):
-            cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
-            cbar.ax.tick_params(labelsize=cb["fontsize"])
+        if config_d["plot"].get("colorbar").get("enable"):
+            cb = config_d["plot"]["colorbar"]
+            cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
+            if cb.get("label"):
+                cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
+                cbar.ax.tick_params(labelsize=cb["fontsize"])
 
     # Make sure any subdirectories exist before we try to write the file
     if os.path.dirname(outfile):
@@ -290,6 +262,91 @@ def plotit(logger,config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,var: str,lev: 
     plt.savefig(outfile,format=fmt)
     plt.close(fig)
     logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
+
+
+def set_patterns_and_outfile(logger, valid, var, lev, filepath, field, plotdict):
+    """
+    Create and return a dictionary of substituting patterns to make string substitutions easier
+    in filenames and other text fields based on user input, using the python string builtin method
+    format_map().
+    Also, return string for the output filename and file format based on input files and user settings.
+    """
+    # Output plot filename
+    outfile=plotdict['filename']
+    if "." in os.path.basename(outfile):
+        #output filename and extension
+        outfnme,fmt=os.path.splitext(outfile)
+        fmt=fmt[1:]
+        if plotdict["format"] is not None:
+            if fmt != plotdict["format"]:
+                raise ValueError(f"plot:format is inconsistent with plot:filename\n" +
+                                 f"{plotdict['format']=}\n" +
+                                 f"{plotdict['filename']=}")
+    else:
+        outfnme=outfile
+        if plotdict["format"] is not None:
+            fmt=plotdict["format"]
+        else:
+            logger.warning("No output file format specified; defaulting to PNG")
+            fmt='png'
+
+    if fmt not in valid:
+        raise ValueError(f"Invalid file format requested: {fmt}\n" +
+                         f"Valid formats are:\n{valid}")
+
+    # Input data filename
+    filename=os.path.basename(filepath)
+    #filename minus extension
+    fnme=os.path.splitext(filename)[0]
+
+    pattern_dict = {
+        "var": var,
+        "lev": lev,
+        "units": "no_Units",
+        "varln": "no_long_name",
+        "filename": filename,
+        "fnme": fnme,
+        "proj": plotdict["projection"]["projection"],
+        "date": "no_Time_dimension",
+        "time": "no_Time_dimension"
+    }
+    if field.attrs.get("units"):
+        pattern_dict.update({
+            "units": field.attrs["units"],
+        })
+    if field.attrs.get("long_name"):
+        pattern_dict.update({
+            "varln": field.attrs["long_name"]
+        })
+    if field.coords.get("Time"):
+        pattern_dict.update({
+            "date": field.coords['Time'].dt.strftime('%Y-%m-%d').item(),
+            "time": field.coords['Time'].dt.strftime('%H:%M:%S').item()
+        })
+
+
+    # Check if the output file already exists, if so act according to plot:exists setting
+    outfnme=outfnme.format_map(pattern_dict)
+    outfile=f"{outfnme.format_map(pattern_dict)}.{fmt}"
+    if os.path.isfile(outfile):
+        if plotdict["exists"]=="overwrite":
+            logger.info(f"Overwriting existing file {outfile}")
+        elif plotdict["exists"]=="abort":
+            raise FileExistsError(f"{outfile}\n"
+                  "to change this behavior see plot:exists setting in config file")
+        elif plotdict["exists"]=="rename":
+            logger.info(f"File exists: {outfile}")
+            i=0
+            # I love when I get to use the walrus operator :D
+            while os.path.isfile(outfile:=f"{outfnme}-{i}.{fmt}"):
+                logger.debug(f"File exists: {outfile}")
+                i+=1
+            logger.info(f"Saving to {outfile} instead")
+        else:
+            raise ValueError(f"Invalid option: config_d['plot']['exists']={plotdict['exists']}")
+
+
+    return pattern_dict, outfile, fmt
 
 
 def set_map_projection(logger,confproj) -> ccrs.Projection:

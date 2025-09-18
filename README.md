@@ -63,6 +63,21 @@ INFO:root:Plotting first time step
 
 It may take some time to produce plots, depending on the size of your domain and number of fields plotted.
 
+## Custom colormaps
+Some custom colormaps have been set up to mimic the typical way of displaying certain data. These colormaps are specified in YAML format files in the `colormaps/` subdirectory.
+These custom colormaps may overwrite some user settings from `config_plot.yaml`, so if you want different settings you will have to modify the files there.
+
+For example, `colormaps/radar_refl.yaml` is designed to mimic the typical display scheme for radar reflectivity data, so the following settings are included:
+
+```
+vmin: 5
+vmax: 75
+plot_under: False
+```
+
+This limits the color range to data between 5 and 75 (dBz), and `plot_under: False` specifies that data below vmin (5) should not be plotted at all; data above vmax (75) will be
+plotted if present but will have the same color value as 75.
+
 ## Limitations
 
 This plotting utility is in a very early form, and has several known limitations:
