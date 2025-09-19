@@ -8,10 +8,11 @@ import glob
 import logging
 import sys
 import os
-from multiprocessing import Pool
+import multiprocessing
 
+import gc, psutil
+proc = psutil.Process(os.getpid())
 
-import pandas as pd  # optional, for nice datetime handling
 
 print("Importing uxarray; this may take a while...")
 import uxarray as ux
@@ -36,19 +37,12 @@ def diff_prev_timestep(field: ux.UxDataArray, dim: str = "Time") -> ux.UxDataArr
     # Compute differences along Time
     result = field.diff(dim=dim, n=1)
 
-#    # Pad with zeros for the first timestep
-#    first = xr.zeros_like(field.isel({dim: 0}))
-#    result = xr.concat([first, diffs], dim=dim)
-#
-#    # Preserve grid reference if available
-#    if hasattr(field, "uxgrid"):
-#        result = result.assign_coords(field.coords)
-#        result.uxgrid = field.uxgrid
-
     return result
+
 
 def sum_fields(x1, x2):
     return x1 + x2
+
 
 DERIVED_FUNCTIONS = {
     "diff_prev_timestep": diff_prev_timestep,
@@ -92,6 +86,7 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 
     datasets = []
 
+    print("Open gridfile, RSS MB:", proc.memory_info().rss/1024**2)
     # Attempt to read gridfile and handle error gracefully if grid info not available
     if not gridfile:
         # If no gridfile provided (empty string), read grid from first data file
@@ -99,7 +94,7 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
     else:
         gf=gridfile
     try:
-        ux.open_grid(gf)
+        uxgrid=ux.open_grid(gf)
     except Exception as e:
         logger.error(f'Could not read grid information from {gf}')
         if not gridfile:
@@ -107,40 +102,28 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
             logger.error("For MPAS this is usually a history file or an init.nc file")
         raise e
 
+    keep_set = set(vars_to_keep) | {"xtime"}  # always keep xtime
+
+    print("Reading datafiles, RSS MB:", proc.memory_info().rss/1024**2)
+
+    xr_ds_list = []
     for f in datafiles:
-        # Open data file lazily (metadata only, no data read yet)
-        ds_raw = xr.open_dataset(f, decode_cf=False, chunks={})
-
-        # Check that all requested vars exist
-        missing = [v for v in vars_to_keep if v not in ds_raw.variables]
+        print(f"For file {f}")
+        print("Open dataset, RSS MB:", proc.memory_info().rss/1024**2)
+        ds = xr.open_dataset(f, decode_cf=False, chunks={})  # lazy
+        missing = [v for v in vars_to_keep if v not in ds.variables]
         if missing:
-            raise KeyError(
-                f"File {f} is missing required variables: {missing}. "
-                f"Available variables: {list(ds_raw.variables)}"
-            )
+            raise KeyError(f"{f} missing required variables: {missing}")
 
-        ds_raw.close()
+        available_keep = [v for v in keep_set if v in ds.variables]
+        print("Append dataset, RSS MB:", proc.memory_info().rss/1024**2)
+        xr_ds_list.append(ds[available_keep])
 
-        # Identify variables to drop
-        keep_vars = set(vars_to_keep) | {"xtime"}  # always keep xtime
-        drop_vars = [v for v in ds_raw.data_vars if v not in keep_vars]
+    print("Merge dataset, RSS MB:", proc.memory_info().rss/1024**2)
+    merged = xr.concat(xr_ds_list, dim="Time", data_vars="minimal", coords="all")
 
-        ds = ux.open_dataset(
-            gridfile,
-            f,
-            drop_variables=drop_vars,
-            chunks={},
-            decode_cf=False
-        )
-
-        datasets.append(ds)
-
-    # Concatenate along Time
-    if len(datasets) == 1:
-        full_dataset = datasets[0]
-    else:
-        merged_xr = xr.concat(datasets, dim="Time", data_vars="minimal", coords="all")
-        full_dataset = ux.UxDataset.from_xarray(merged_xr, uxgrid=datasets[0].uxgrid)
+    print("Attach grid to dataset, RSS MB:", proc.memory_info().rss/1024**2)
+    full_dataset = ux.UxDataset.from_xarray(merged, uxgrid=uxgrid)
 
     return full_dataset
 
@@ -188,6 +171,7 @@ def load_full_dataset(dsconf):
     files = sorted(glob.glob(dsconf["files"]))
     var_defs = dsconf["vars"]
 
+    print("1. Determine all native variables needed, RSS MB:", proc.memory_info().rss/1024**2)
     # 1. Determine all native variables needed
     readvars = set()
     for varname in var_defs:
@@ -196,9 +180,11 @@ def load_full_dataset(dsconf):
     # If no gridfile provided, set to empty string and handle in open_ux_subset()
     if not dsconf.get("gridfile"):
         dsconf["gridfile"]=""
+    print("2. Open UxDataset lazily, RSS MB:", proc.memory_info().rss/1024**2)
     # 2. Open UxDataset lazily
     ds = open_ux_subset(dsconf["gridfile"], files, list(readvars))
 
+    print("3. Compute derived variables and add to ds, RSS MB:", proc.memory_info().rss/1024**2)
     # 3. Compute derived variables and add to ds
     for varname, cfg in var_defs.items():
         if cfg["source"] == "derived":
@@ -206,7 +192,8 @@ def load_full_dataset(dsconf):
             print(f"{varname=}")
             print(f"{ds[varname]=}")
 
-    ds.load()
+    print("4. RSS MB:", proc.memory_info().rss/1024**2)
+    print(f"{ds=}")
 
     return ds
 
@@ -244,6 +231,7 @@ def setupargs(config_d: dict,uxds: ux.UxDataset):
         else:
             raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
 
+        print(f"{var=}\n{levels=}")
         for lev in levels:
             args.append( (config_d,uxds,var,lev,proj) )
 
@@ -267,23 +255,30 @@ if __name__ == "__main__":
 
     # Load settings from config file
     logger.info('Loading user config settings')
+    print("RSS MB:", proc.memory_info().rss/1024**2)
     expt_config=setup_config(args.config)
 
     # Load all data to plot as a single dataset
     logger.info('Loading data from netcdf files')
+    print("RSS MB:", proc.memory_info().rss/1024**2)
     dataset=load_full_dataset(expt_config["dataset"])
 
     logger.debug(f'{dataset=}')
 
     # Set up plotit() arguments
     logger.info('Setting up plot tasks')
+    print("RSS MB:", proc.memory_info().rss/1024**2)
     plotargs=setupargs(expt_config,dataset)
 
+    logger.info('Submitting to starmap')
+    print("RSS MB:", proc.memory_info().rss/1024**2)
     logger.debug(f"{plotargs=}")
     # Make the plots!
     if args.procs > 1:
         logger.info(f"Plotting in parallel with {args.procs} tasks")
-    with Pool(processes=args.procs) as pool:
+    # This is needed to avoid some kind of file handle clobbering mumbo-jumbo with netCDF
+    multiprocessing.set_start_method("spawn")
+    with multiprocessing.Pool(processes=args.procs) as pool:
         pool.starmap(plotithandler, plotargs)
 
 #    proj=set_map_projection(expt_config["plot"]["projection"])

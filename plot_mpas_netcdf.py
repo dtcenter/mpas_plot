@@ -14,6 +14,9 @@ import traceback
 from datetime import datetime
 from multiprocessing import Pool
 
+import gc, psutil
+proc = psutil.Process(os.getpid())
+
 print("Importing uxarray; this may take a while...")
 import uxarray as ux
 import matplotlib as mpl
@@ -86,6 +89,7 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,proj) -> N
     if "Time" in field.dims:
         for i in range(uxds.sizes["Time"]):
             logger.info(f"Plotting time step {i}")
+            print("RSS MB:", proc.memory_info().rss/1024**2)
             ftime=None
             if "xtime" in uxds:
                 ftime=uxds["xtime"].isel(Time=i)
@@ -100,7 +104,7 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,proj) -> N
                 plotit(config_d,field.isel(Time=i),var,lev,files[i],proj,ftime_dt,config_d['dataset']['vars'][var]['plot'])
             except Exception as e:
                 logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
-                logger.error(f"Arguments to plotit():\n{config_d=}\n{field.isel(Time=i)=}\n"\
+                logger.debug(f"Arguments to plotit():\n{config_d=}\n{field.isel(Time=i)=}\n"\
                              f"{var=}\n{lev=}\n{files[i]=}\n{proj=}\n{ftime_dt=}"\
                              f"{config_d['dataset']['vars'][var]['plot']=}")
                 logger.error(f"{traceback.print_tb(e.__traceback__)}:")
@@ -140,12 +144,14 @@ def plotit(config_d: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,p
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
     print(f"{varslice=}")
+    print("pre-polycollection RSS MB:", proc.memory_info().rss/1024**2)
     if plotdict["periodic_bdy"]:
         logger.info("Creating polycollection with periodic_bdy=True")
         logger.info("NOTE: This option can be very slow for large domains")
         pc=varslice.to_polycollection(periodic_elements='split')
     else:
         pc=varslice.to_polycollection()
+    print("post-polycollection RSS MB:", proc.memory_info().rss/1024**2)
 
     pc.set_antialiased(False)
 

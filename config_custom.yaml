@@ -7,8 +7,6 @@ dataset:
     precipw:
       source: native
       plot:
-        colormap: gist_ncar
-      lev: all
     rainnc:
       source: native
       plot:
@@ -35,7 +33,7 @@ plot:
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: 'new_capability_parallel_testing/{var}_{lev}_{date}_{time}.png'
+  filename: 'memory_fix_parallel_testing/{var}_lev{lev}_{date}_{time}.png'
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
