@@ -86,7 +86,7 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 
     datasets = []
 
-    print("Open gridfile, RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Opening gridfile; Memory usage:{proc.memory_info().rss/1024**2} MB")
     # Attempt to read gridfile and handle error gracefully if grid info not available
     if not gridfile:
         # If no gridfile provided (empty string), read grid from first data file
@@ -104,25 +104,21 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 
     keep_set = set(vars_to_keep) | {"xtime"}  # always keep xtime
 
-    print("Reading datafiles, RSS MB:", proc.memory_info().rss/1024**2)
 
     xr_ds_list = []
     for f in datafiles:
-        print(f"For file {f}")
-        print("Open dataset, RSS MB:", proc.memory_info().rss/1024**2)
+        logger.debug(f"Opening dataset file {f}\nMemory usage:{proc.memory_info().rss/1024**2} MB")
         ds = xr.open_dataset(f, decode_cf=False, chunks={})  # lazy
         missing = [v for v in vars_to_keep if v not in ds.variables]
         if missing:
             raise KeyError(f"{f} missing required variables: {missing}")
 
         available_keep = [v for v in keep_set if v in ds.variables]
-        print("Append dataset, RSS MB:", proc.memory_info().rss/1024**2)
         xr_ds_list.append(ds[available_keep])
 
-    print("Merge dataset, RSS MB:", proc.memory_info().rss/1024**2)
     merged = xr.concat(xr_ds_list, dim="Time", data_vars="minimal", coords="all")
 
-    print("Attach grid to dataset, RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Attaching grid to dataset; Memory usage:{proc.memory_info().rss/1024**2} MB")
     full_dataset = ux.UxDataset.from_xarray(merged, uxgrid=uxgrid)
 
     return full_dataset
@@ -132,7 +128,6 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 # =====================
 def compute_derived(var_defs, ds, name):
     cfg = var_defs[name]
-    print(f"{cfg=}")
 
     if cfg["source"] == "native":
         return ds[name]
@@ -140,12 +135,9 @@ def compute_derived(var_defs, ds, name):
     elif cfg["source"] == "derived":
         func_name = cfg["function"]
         inputs = cfg.get("inputs", [])
-        print(f"{func_name=}")
-        print(f"{inputs=}")
 
         # Recursively get input arrays
         input_arrays = [compute_derived(var_defs, ds, v) for v in inputs]
-        print(f"{input_arrays=}")
 
 
         # Lookup function
@@ -154,8 +146,8 @@ def compute_derived(var_defs, ds, name):
             raise ValueError(f"Unknown derived function: {func_name}")
 
         # Compute derived variable
+        logger.debug(f"Computing derived variable {name} with function {func_name}")
         result = func(*input_arrays)
-        print(f"{result=}")
 
         # Attach metadata if provided
         attrs = cfg.get("attrs", {})
@@ -171,7 +163,8 @@ def load_full_dataset(dsconf):
     files = sorted(glob.glob(dsconf["files"]))
     var_defs = dsconf["vars"]
 
-    print("1. Determine all native variables needed, RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Determining variables to read from file\nMemory usage:{proc.memory_info().rss/1024**2} MB")
+
     # 1. Determine all native variables needed
     readvars = set()
     for varname in var_defs:
@@ -180,20 +173,14 @@ def load_full_dataset(dsconf):
     # If no gridfile provided, set to empty string and handle in open_ux_subset()
     if not dsconf.get("gridfile"):
         dsconf["gridfile"]=""
-    print("2. Open UxDataset lazily, RSS MB:", proc.memory_info().rss/1024**2)
     # 2. Open UxDataset lazily
     ds = open_ux_subset(dsconf["gridfile"], files, list(readvars))
 
-    print("3. Compute derived variables and add to ds, RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Compute derived variables\nMemory usage:{proc.memory_info().rss/1024**2} MB")
     # 3. Compute derived variables and add to ds
     for varname, cfg in var_defs.items():
         if cfg["source"] == "derived":
             ds[varname] = compute_derived(var_defs, ds, varname)
-            print(f"{varname=}")
-            print(f"{ds[varname]=}")
-
-    print("4. RSS MB:", proc.memory_info().rss/1024**2)
-    print(f"{ds=}")
 
     return ds
 
@@ -219,10 +206,12 @@ def setupargs(config_d: dict,uxds: ux.UxDataset):
         # Plot all levels by default
         if not vardict.get("lev"):
             vardict["lev"]="all"
+        vardict["vertcoord"]=vardict.get("vertcoord","nVertLevels")
         if vardict["lev"] in [ ["all"], "all" ]:
-            if "nVertLevels" in uxds[var].dims:
-                levels = range(0,len(uxds[var]["nVertLevels"]))
+            if vardict["vertcoord"] in uxds[var].dims:
+                levels = range(0,len(uxds[var][vardict["vertcoord"]]))
             else:
+                logger.debug(f"{var} has no vertical coordinate, plotting only level")
                 levels = [0]
         elif isinstance(vardict["lev"], list):
             levels = vardict["lev"]
@@ -231,7 +220,6 @@ def setupargs(config_d: dict,uxds: ux.UxDataset):
         else:
             raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
 
-        print(f"{var=}\n{levels=}")
         for lev in levels:
             args.append( (config_d,uxds,var,lev,proj) )
 
@@ -255,23 +243,23 @@ if __name__ == "__main__":
 
     # Load settings from config file
     logger.info('Loading user config settings')
-    print("RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     expt_config=setup_config(args.config)
 
     # Load all data to plot as a single dataset
     logger.info('Loading data from netcdf files')
-    print("RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     dataset=load_full_dataset(expt_config["dataset"])
 
     logger.debug(f'{dataset=}')
 
     # Set up plotit() arguments
     logger.info('Setting up plot tasks')
-    print("RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     plotargs=setupargs(expt_config,dataset)
 
     logger.info('Submitting to starmap')
-    print("RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     logger.debug(f"{plotargs=}")
     # Make the plots!
     if args.procs > 1:

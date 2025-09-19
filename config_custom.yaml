@@ -4,6 +4,10 @@ dataset:
   #gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.init.nc'
   gridfile: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-01_00.00.00.nc'
   vars:
+    t_isobaric:
+      source: native
+      lev: all
+      vertcoord: nIsoLevelsT
     precipw:
       source: native
       plot:
