@@ -69,7 +69,7 @@ def setupargs(config_d: dict,uxds: ux.UxDataset,grid: ux.Grid,filepath: str):
     return args
 
 
-def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,proj) -> None:
+def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int) -> None:
     """
     A wrapper for plotit() that handles errors for Python multiprocessing, as well as preprocessing the
     UxDataSet into a UxDataArray with just the variable and timestep we want to plot
@@ -89,37 +89,32 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,proj) -> N
     if "Time" in field.dims:
         for i in range(uxds.sizes["Time"]):
             logger.info(f"Plotting time step {i}")
-            print("RSS MB:", proc.memory_info().rss/1024**2)
+            logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
             ftime=None
             if "xtime" in uxds:
                 ftime=uxds["xtime"].isel(Time=i)
-#                print(f"{ftime=}")
-#                print(f"{ftime.values=}")
-#                ftime_str = b"".join(ftime.values).decode("utf-8").strip()
                 ftime_str = "".join(uxds["xtime"].isel(Time=i).values.astype(str))
                 
-                print(f"{ftime_str.strip()=}")
                 ftime_dt = datetime.strptime(ftime_str.strip(), "%Y-%m-%d_%H:%M:%S")
             try:
-                plotit(config_d['dataset']['vars'][var],field.isel(Time=i),var,lev,files[i],proj,ftime_dt)
+                plotit(config_d['dataset']['vars'][var],field.isel(Time=i),var,lev,files[i],ftime_dt)
             except Exception as e:
                 logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
                 logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field.isel(Time=i)=}\n"\
-                             f"{var=}\n{lev=}\n{files[i]=}\n{proj=}\n{ftime_dt=}"\
+                             f"{var=}\n{lev=}\n{files[i]=}\n{ftime_dt=}"\
                              f"{config_d['dataset']['vars'][var]['plot']=}")
                 logger.error(f"{traceback.print_tb(e.__traceback__)}:")
                 logger.error(f"{type(e).__name__}:")
                 logger.error(e)
 
 
-def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,proj,ftime) -> None:
+def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
     """
     The main program that makes the plot(s)
     Args:
         vardict      (dict): A dictionary containing experiment settings specific to the variable being plotted
         uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted and grid information
         filepath      (str): The filename of the input data that was read into the ux objects
-        proj (cartopy.crs.proj): A cartopy projection
         ftime    (datetime): The forecast valid time as a datetime object
 
     Returns:
@@ -128,7 +123,6 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,pr
 
     plotdict=vardict["plot"]
     plotstart = time.time()
-    print(f"{ftime=}")
 
     # Make vertical coordinate a keyword argument
     vertargs={vardict["vertcoord"]: lev}
@@ -146,15 +140,14 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,pr
                                                           remap_to='face centers', k=3)
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
-    print(f"{varslice=}")
-    print("pre-polycollection RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     if plotdict["periodic_bdy"]:
         logger.info("Creating polycollection with periodic_bdy=True")
         logger.info("NOTE: This option can be very slow for large domains")
         pc=varslice.to_polycollection(periodic_elements='split')
     else:
         pc=varslice.to_polycollection()
-    print("post-polycollection RSS MB:", proc.memory_info().rss/1024**2)
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
 
     pc.set_antialiased(False)
 
@@ -183,6 +176,10 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,pr
         cmap.set_under(alpha=0)
     pc.set_cmap(cmap)
 
+    # Set up map projection properties
+    logger.debug(plotdict["projection"])
+    proj=set_map_projection(plotdict["projection"])
+
     fig, ax = plt.subplots(1, 1, figsize=(plotdict["figwidth"],
                            plotdict["figheight"]), dpi=plotdict["dpi"],
                            constrained_layout=True,
@@ -192,7 +189,6 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,pr
     validfmts=fig.canvas.get_supported_filetypes()
 
 
-    logger.debug(plotdict["projection"])
     logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
     if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
         logger.info('One or more latitude/longitude range values were not set; plotting full projection')

@@ -20,8 +20,7 @@ import xarray as xr
 
 import uwtools.api.config as uwconfig
 
-from plot_mpas_netcdf import setup_logging, setup_config, set_map_projection, plotithandler
-from file_read import load_dataset, invalid_vars
+from plot_mpas_netcdf import plotithandler
 
 logger = logging.getLogger(__name__)
 
@@ -186,14 +185,10 @@ def load_full_dataset(dsconf):
 
 
 def setupargs(config_d: dict,uxds: ux.UxDataset):
-    """ 
+    """
     Sets up the argument list for plotit to allow for parallelization with Python starmap
-    """ 
-    
-    args = [] 
-
-    # Set up map projection properties
-    proj=set_map_projection(expt_config["plot"]["projection"])
+    """
+    args = []
 
     for var in config_d["dataset"]["vars"]:
         # Update each variable's plot settings dictionary
@@ -221,9 +216,98 @@ def setupargs(config_d: dict,uxds: ux.UxDataset):
             raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
 
         for lev in levels:
-            args.append( (config_d,uxds,var,lev,proj) )
+            args.append( (config_d,uxds,var,lev) )
 
     return args
+
+
+def setup_config(config: str, default: str="default_options.yaml") -> dict:
+    """
+    Function for reading in dictionary of configuration settings, and performing basic checks
+    on those settings
+
+    Args:
+        config  (str) : The full path of the user config file
+        default (str) : The full path of the default config file
+
+    Returns:
+        dict: A dictionary of the configuration settings after applying defaults and user settings,
+              as well as some basic consistency checks
+    """
+    logger.debug(f"Reading defaults file {default}")
+    try:
+        expt_config = uwconfig.get_yaml_config(config=default)
+    except Exception as e:
+        logger.critical(e)
+        logger.critical(f"Error reading {config}, check above error trace for details")
+        sys.exit(1)
+    logger.debug(f"Reading options file {config}")
+    try:
+        user_config = uwconfig.get_yaml_config(config=config)
+    except Exception as e:
+        logger.critical(e)
+        logger.critical(f"Error reading {config}, check above error trace for details")
+        sys.exit(1)
+
+    # Update the dict read from defaults file with the dict read from user config file
+    expt_config.update_values(user_config)
+
+    if not expt_config["dataset"].get("gridfile"):
+        expt_config["dataset"]["gridfile"]=""
+
+    # Perform consistency checks
+    if not expt_config["data"].get("lev"):
+        logger.debug("Level not specified in config, will use level 0 if multiple found")
+        expt_config["data"]["lev"]=0
+
+    if isinstance(expt_config["plot"]["title"],str):
+        raise TypeError("plot:title should be a dictionary, not a string\n"\
+                        "Adjust your config.yaml accordingly. See default_options.yaml for details.")
+
+    logger.debug("Expanding references to other variables and Jinja templates")
+    expt_config.dereference()
+    return expt_config
+
+
+def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False):
+    """
+    Sets up logging, printing high-priority (INFO and higher) messages to screen, and printing all
+    messages with detailed timing and routine info in the specified text file.
+
+    If debug = True, print all messages to both screen and log file.
+    """
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+
+    # Prevent duplicate handlers if called more than once
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Console handler
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG if debug else logging.INFO)
+    console_formatter = logging.Formatter("%(levelname)-8s %(message)s")
+    console.setFormatter(console_formatter)
+
+    # File handler
+    fh = logging.FileHandler(logfile, mode="w")
+    fh.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        "%(asctime)s %(name)s.%(funcName)s %(levelname)-8s %(message)s",
+        "%Y-%m-%d %H:%M:%S",
+    )
+    fh.setFormatter(file_formatter)
+
+    # Add handlers
+    root_logger.addHandler(console)
+    root_logger.addHandler(fh)
+
+
+    # Suppress debug prints from matplotlib
+    logging.getLogger("matplotlib").setLevel(logging.INFO)
+
+    root_logger.debug("Logging configured")
+
 
 if __name__ == "__main__":
 
@@ -269,9 +353,4 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes=args.procs) as pool:
         pool.starmap(plotithandler, plotargs)
 
-#    proj=set_map_projection(expt_config["plot"]["projection"])
-#    plotithandler(expt_config,dataset,dataset,"rainnc",0,"test",proj)
-
-#    proj=set_map_projection(expt_config["dataset"]["vars"]["rainnc"]["plot"]["projection"])
-#    plotithandler(expt_config["dataset"]["vars"]["rainnc"]["plot"],dataset,dataset,"rainnc",1,"test",proj)
     logger.info("Done plotting all figures!")

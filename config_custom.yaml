@@ -1,19 +1,36 @@
 dataset:
   #files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/diag.2025-05-0*nc'
-  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/diag.2025-05-*.nc'
+  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/diag.2025-05-0[0-3]*.nc'
   #gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.init.nc'
   gridfile: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-01_00.00.00.nc'
   vars:
+    t2m:
+      source: native
+      plot:
+        lakes:
+          scale: '10m'
+          enable: False
+          color: 'lightblue'
     t_isobaric:
       source: native
       lev: all
       vertcoord: nIsoLevelsT
+      plot:
+        projection:
+          projection: PlateCarree
+          latrange:
+            - 30
+            - 31
+          lonrange:
+            - -97
+            - -96
+        edges:
+          color: face
+          width: 0.1
     precipw:
       source: native
-      plot:
     rainnc:
       source: native
-      plot:
     rain_1hr:
       source: derived
       function: diff_prev_timestep
@@ -26,6 +43,15 @@ dataset:
       source: native
       plot:
         colormap: radar_refl
+        projection:
+          projection: Mercator
+          latrange:
+            - 30
+            - 31
+          lonrange:
+            - -97
+            - -96
+        dpi: 600
 
 plot:
   # {var} = Variable name
@@ -37,7 +63,7 @@ plot:
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: 'memory_fix_parallel_testing/{var}_lev{lev}_{date}_{time}.png'
+  filename: 'custom_plot_proj_after/{var}_lev{lev}_{date}_{time}.png'
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
@@ -46,29 +72,15 @@ plot:
     color: face
     # set width to 0 to have no borders
     width: 0.1
-  # Settings for plotting political boundaries. To disable political boundaries, specify "boundaries:" with no options
   boundaries:
-    # Level of political boundaries to plot. Level 0 is national boundaries, Level 1 is sub-national boundaries (e.g.
-    # states, provinces, etc.), Level 2 is county boundaries (US only); counties require 10m scale
     detail: 2
-    # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '10m'
-
     color: ['k','gray','lightgray']
+    linewidth: [1,0.5,0.2]
 
-  # Settings for plotting coastlines. To disable coastlines, specify "coastlines:" with no options
   coastlines:
-    # Most standard Matplotlib arguments for shapes will work here, but I haven't figured out good documentation on which.
-    # The ones listed here work, but likely a lot more customization can happen here.
     scale: '10m'
     color: 'k'
-    linewidth: 0.2
-  lakes:
-    # Most standard Matplotlib arguments for shapes will work here, but I haven't figured out good documentation on which.
-    # The ones listed here work, but likely a lot more customization can happen here.
-    scale: '10m'
-    enable: False
-    color: 'lightblue'
     linewidth: 0.2
   colorbar:
     orientation: vertical
@@ -76,20 +88,7 @@ plot:
     fontsize: 8
   # Colormap for output from Matplotlib. Reference: https://matplotlib.org/stable/gallery/color/colormap_reference.html
   colormap: "viridis"
-  # colormap: "gist_rainbow"
-#  colormap: "gist_ncar"
-#  colormap: radar_refl
   dpi: 300
-  # figheight: 4
-  # figwidth: 8
   figwidth: 5
   projection:
-    #    projection: Mercator
     projection: PlateCarree
-#    latrange:
-#      - 40
-#      - 45
-#    lonrange:
-#      - -97
-#      - -88
-
