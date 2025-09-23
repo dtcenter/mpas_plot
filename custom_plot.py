@@ -9,7 +9,7 @@ import logging
 import sys
 import os
 import multiprocessing
-import traceback            
+import traceback
 import time
 from datetime import datetime
 
@@ -27,35 +27,12 @@ import uxarray as ux
 import xarray as xr
 
 import uwtools.api.config as uwconfig
+import custom_functions
 
 from plot_functions import set_map_projection, set_patterns_and_outfile
 
+
 logger = logging.getLogger(__name__)
-
-
-# =====================
-# User-defined derived functions
-# =====================
-def diff_prev_timestep(field: ux.UxDataArray, dim: str = "Time") -> ux.UxDataArray:
-    """
-    Return timestep-to-timestep differences for input field.
-    First timestep is filled with zeros.
-    """
-    # Compute differences along Time
-    result = field.diff(dim=dim, n=1)
-
-    return result
-
-
-def sum_fields(x1, x2):
-    return x1 + x2
-
-
-DERIVED_FUNCTIONS = {
-    "diff_prev_timestep": diff_prev_timestep,
-    "sum_fields": sum_fields,
-}
-
 
 # =====================
 # Recursive variable parsing
@@ -70,7 +47,8 @@ def get_vars_to_read(var_defs: dict, name: str, seen=None) -> set:
         return set()
     seen.add(name)
 
-    cfg = var_defs[name]
+    if not (cfg:=var_defs.get(name)):
+        return {name}
 
     if cfg["source"] == "native":
         return {name}
@@ -134,7 +112,8 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
 # Recursive derived variable computation
 # =====================
 def compute_derived(var_defs, ds, name):
-    cfg = var_defs[name]
+    if not (cfg:=var_defs.get(name)):
+        return ds[name]
 
     if cfg["source"] == "native":
         return ds[name]
@@ -148,7 +127,7 @@ def compute_derived(var_defs, ds, name):
 
 
         # Lookup function
-        func = DERIVED_FUNCTIONS.get(func_name)
+        func = custom_functions.DERIVED_FUNCTIONS.get(func_name)
         if func is None:
             raise ValueError(f"Unknown derived function: {func_name}")
 
@@ -167,7 +146,12 @@ def compute_derived(var_defs, ds, name):
 # Load dataset based on user settings in dataset config
 # =====================
 def load_full_dataset(dsconf):
-    files = sorted(glob.glob(dsconf["files"]))
+    if isinstance(dsconf["files"],list):
+        files = sorted(dsconf["files"])
+    else:
+        files = sorted(glob.glob(dsconf["files"]))
+        if not files:
+            raise FileNotFoundError(dsconf["files"])
     var_defs = dsconf["vars"]
 
     logger.debug(f"Determining variables to read from file\nMemory usage:{proc.memory_info().rss/1024**2} MB")
