@@ -152,6 +152,7 @@ def load_full_dataset(dsconf):
         files = sorted(glob.glob(dsconf["files"]))
         if not files:
             raise FileNotFoundError(dsconf["files"])
+    dsconf["files"]=files
     var_defs = dsconf["vars"]
 
     logger.debug(f"Determining variables to read from file\nMemory usage:{proc.memory_info().rss/1024**2} MB")
@@ -165,7 +166,7 @@ def load_full_dataset(dsconf):
     if not dsconf.get("gridfile"):
         dsconf["gridfile"]=""
     # 2. Open UxDataset lazily
-    ds = open_ux_subset(dsconf["gridfile"], files, list(readvars))
+    ds = open_ux_subset(dsconf["gridfile"], dsconf["files"], list(readvars))
 
     logger.debug(f"Compute derived variables\nMemory usage:{proc.memory_info().rss/1024**2} MB")
     # 3. Compute derived variables and add to ds
@@ -192,7 +193,6 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int) -> None:
         raise ValueError(msg)
 
     field=uxds[var]
-    files = sorted(glob.glob(config_d["dataset"]["files"]))
 
 
     # If multiple timesteps in a dataset, loop over times
@@ -207,11 +207,11 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int) -> None:
 
                 ftime_dt = datetime.strptime(ftime_str.strip(), "%Y-%m-%d_%H:%M:%S")
             try:
-                plotit(config_d['dataset']['vars'][var],field.isel(Time=i),var,lev,files[i],ftime_dt)
+                plotit(config_d['dataset']['vars'][var],field.isel(Time=i),var,lev,config_d['dataset']['files'][i],ftime_dt)
             except Exception as e:
                 logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
                 logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field.isel(Time=i)=}\n"\
-                             f"{var=}\n{lev=}\n{files[i]=}\n{ftime_dt=}"\
+                             f"{var=}\n{lev=}\n{config_d['dataset']['files'][i]=}\n{ftime_dt=}"\
                              f"{config_d['dataset']['vars'][var]['plot']=}")
                 logger.error(f"{traceback.print_tb(e.__traceback__)}:")
                 logger.error(f"{type(e).__name__}:")
