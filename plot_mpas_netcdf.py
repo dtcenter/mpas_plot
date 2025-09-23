@@ -373,6 +373,20 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
 
 
+def deep_merge(dict1, dict2):
+    """Update dictionary 1 with dictionary 2, including nested dictionaries."""
+    result = dict1.copy()
+    for key, value in dict2.items():
+        if key in result:
+            if isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = deep_merge(result[key], value)
+            else:
+                result[key] = value
+        else:
+            result[key] = value
+    return result
+
+
 def setup_args(config_d: dict,uxds: ux.UxDataset):
     """
     Sets up the argument list for plotit to allow for parallelization with Python starmap
@@ -383,7 +397,7 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
         # Update each variable's plot settings dictionary
         plotdict=copy.copy(config_d["plot"])
         if update_dict:=config_d["dataset"]["vars"][var].get("plot"):
-            plotdict.update(update_dict)
+            plotdict=deep_merge(plotdict,update_dict)
         config_d["dataset"]["vars"][var]["plot"]=plotdict
 
         vardict=config_d["dataset"]["vars"][var]
@@ -414,7 +428,6 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
                     ftime=uxds["xtime"].isel(Time=i)
                     times.append("".join(uxds["xtime"].isel(Time=i).values.astype(str)))
 
-        print(f"{times=}")
         for lev in levels:
             i=0
             for timestring in times:
