@@ -1,8 +1,8 @@
 dataset:
   #files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/diag.2025-05-0*nc'
-  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/diag.2025-05-0[0-3]*.nc'
+  files: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2020081000/ens_1_KF/diag.2020-08-10_0[0-1].nc'
   #gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.init.nc'
-  gridfile: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2025050100/ens_1/history.2025-05-01_00.00.00.nc'
+  gridfile: '/glade/derecho/scratch/gallus/dtc_mpas/expt_dirs/1km_hrrrIC/Texas_test/mpas_atm/2020081000/ens_1_KF/history.2020-08-10_00.00.00.nc'
   vars:
     t2m:
       source: native
@@ -11,19 +11,22 @@ dataset:
           scale: '10m'
           enable: False
           color: 'lightblue'
+    delta_t2m:
+      source: derived
+      function: diff_prev_timestep
+      inputs:
+        - "t2m"
+      attrs:
+        long_name: "1-hour change in 2m temperature"
+        units: "K"
+      plot:
+        proj:
+          colormap: seismic
     t_isobaric:
       source: native
       lev: all
       vertcoord: nIsoLevelsT
       plot:
-        projection:
-          projection: PlateCarree
-          latrange:
-            - 30
-            - 31
-          lonrange:
-            - -97
-            - -96
         edges:
           color: face
           width: 0.1
@@ -43,14 +46,6 @@ dataset:
       source: native
       plot:
         colormap: radar_refl
-        projection:
-          projection: Mercator
-          latrange:
-            - 30
-            - 31
-          lonrange:
-            - -97
-            - -96
         dpi: 600
 
 plot:
@@ -63,7 +58,7 @@ plot:
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: 'custom_plot_proj_after/{var}_lev{lev}_{date}_{time}.png'
+  filename: 'custom_plot/{var}_lev{lev}_{date}_{time}.png'
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8

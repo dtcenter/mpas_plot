@@ -9,9 +9,17 @@ import logging
 import sys
 import os
 import multiprocessing
+import traceback            
+import time
+from datetime import datetime
 
 import gc, psutil
 proc = psutil.Process(os.getpid())
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import cartopy.feature as cfeature
+import cartopy.crs as ccrs
 
 
 print("Importing uxarray; this may take a while...")
@@ -20,7 +28,7 @@ import xarray as xr
 
 import uwtools.api.config as uwconfig
 
-from plot_mpas_netcdf import plotithandler
+from plot_functions import set_map_projection, set_patterns_and_outfile
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +192,212 @@ def load_full_dataset(dsconf):
     return ds
 
 
+def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int) -> None:
+    """
+    A wrapper for plotit() that handles errors for Python multiprocessing, as well as preprocessing the
+    UxDataSet into a UxDataArray with just the variable and timestep we want to plot
+    """
+
+    # Since this is a spawn process, we need to re-initialize logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Starting plotit() for {var=}, {lev=}")
+
+    if var not in list(uxds.data_vars.keys()):
+        msg = f"{var=} is not a valid variable\n\n(you never should have made it this far though)\n\n{uxds.data_vars}"
+        raise ValueError(msg)
+
+    field=uxds[var]
+    files = sorted(glob.glob(config_d["dataset"]["files"]))
+
+
+    # If multiple timesteps in a dataset, loop over times
+    if "Time" in field.dims:
+        for i in range(uxds.sizes["Time"]):
+            logger.info(f"Plotting time step {i}")
+            logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+            ftime=None
+            if "xtime" in uxds:
+                ftime=uxds["xtime"].isel(Time=i)
+                ftime_str = "".join(uxds["xtime"].isel(Time=i).values.astype(str))
+
+                ftime_dt = datetime.strptime(ftime_str.strip(), "%Y-%m-%d_%H:%M:%S")
+            try:
+                plotit(config_d['dataset']['vars'][var],field.isel(Time=i),var,lev,files[i],ftime_dt)
+            except Exception as e:
+                logger.error(f'Could not plot variable {var}, level {lev}, time {i}')
+                logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field.isel(Time=i)=}\n"\
+                             f"{var=}\n{lev=}\n{files[i]=}\n{ftime_dt=}"\
+                             f"{config_d['dataset']['vars'][var]['plot']=}")
+                logger.error(f"{traceback.print_tb(e.__traceback__)}:")
+                logger.error(f"{type(e).__name__}:")
+                logger.error(e)
+
+
+def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
+    """
+    The main program that makes the plot(s)
+    Args:
+        vardict      (dict): A dictionary containing experiment settings specific to the variable being plotted
+        uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted and grid information
+        filepath      (str): The filename of the input data that was read into the ux objects
+        ftime    (datetime): The forecast valid time as a datetime object
+
+    Returns:
+        None
+    """
+
+    plotdict=vardict["plot"]
+    plotstart = time.time()
+
+    # Make vertical coordinate a keyword argument
+    vertargs={vardict["vertcoord"]: lev}
+    if vardict["vertcoord"] in uxda.dims:
+        varslice = uxda.isel(**vertargs)
+    else:
+        if lev > 0:
+            logger.error(f"Variable {var} only has one vertical level; can not plot {lev=}")
+            return
+        varslice = uxda
+
+    if "n_face" not in uxda.dims:
+        logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
+        varslice = varslice.remap.inverse_distance_weighted(uxda.uxgrid,
+                                                          remap_to='face centers', k=3)
+        logger.debug(f"Data slice after interpolation:\n{varslice=}")
+
+    logger.info(f"{varslice=}")
+
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+    if plotdict["periodic_bdy"]:
+        logger.info("Creating polycollection with periodic_bdy=True")
+        logger.info("NOTE: This option can be very slow for large domains")
+        pc=varslice.to_polycollection(periodic_elements='split')
+    else:
+        pc=varslice.to_polycollection()
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+
+    pc.set_antialiased(False)
+
+    # Handle color mapping
+    cmapname=plotdict["colormap"]
+    if cmapname in plt.colormaps():
+        cmap=mpl.colormaps[cmapname]
+        pc.set_cmap(plotdict["colormap"])
+    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
+        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
+        #Overwrite additional settings specified in colormap file
+        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
+        for setting in cmap_settings:
+            if setting == "colors":
+                # plot:colors is a list of color values for the custom colormap and is handled separately
+                continue
+            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
+            plotdict[setting]=cmap_settings[setting]
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"])
+    else:
+        raise ValueError(f"Requested color map {cmapname} is not valid")
+
+    if not plotdict["plot_over"]:
+        cmap.set_over(alpha=0)
+    if not plotdict["plot_under"]:
+        cmap.set_under(alpha=0)
+    pc.set_cmap(cmap)
+
+    # Set up map projection properties
+    logger.debug(plotdict["projection"])
+    proj=set_map_projection(plotdict["projection"])
+
+    fig, ax = plt.subplots(1, 1, figsize=(plotdict["figwidth"],
+                           plotdict["figheight"]), dpi=plotdict["dpi"],
+                           constrained_layout=True,
+                           subplot_kw=dict(projection=proj))
+
+    # Check the valid file formats supported for this figure
+    validfmts=fig.canvas.get_supported_filetypes()
+
+    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
+        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+    else:
+        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+
+    if None not in [ plotdict["vmin"], plotdict["vmax"]]:
+        pc.set_clim(plotdict["vmin"],plotdict["vmax"])
+
+    #Plot political boundaries if requested
+    if plotdict.get("boundaries"):
+        pb=plotdict["boundaries"]
+        if pb.get("enable"):
+            # Users can set these values to scalars or lists; if scalar provided, re-format to list with three identical values
+            for setting in ["color", "linewidth", "scale"]:
+                if type(pb[setting]) is not list:
+
+                    pb[setting]=[pb[setting],pb[setting],pb[setting]]
+            if pb["detail"]==2:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=pb["scale"][2],edgecolor=pb["color"][2],
+                               facecolor='none',linewidth=pb["linewidth"][2], name='admin_2_counties'))
+            if pb["detail"]>0:
+                ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                               scale=pb["scale"][1],edgecolor=pb["color"][1],
+                               facecolor='none',linewidth=pb["linewidth"][1], name='admin_1_states_provinces'))
+            ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
+                           scale=pb["scale"][0],edgecolor=pb["color"][0],
+                           facecolor='none',linewidth=pb["linewidth"][0], name='admin_0_countries'))
+    #Plot coastlines if requested
+    if plotdict.get("coastlines"):
+        pcl=plotdict["coastlines"]
+        if pcl.get("enable"):
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',color=pcl["color"],facecolor='none',
+                           linewidth=pcl["linewidth"], scale=pcl["scale"], name='coastline'))
+    #Plot lakes if requested
+    if plotdict.get("lakes"):
+        pl=plotdict["lakes"]
+        if pl.get("enable"):
+            ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["color"],facecolor='none',
+                           linewidth=pl["linewidth"], scale=pl["scale"], name='lakes'))
+
+    # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
+    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,plotdict)
+
+    pc.set_edgecolor(plotdict['edges']['color'])
+    pc.set_linewidth(plotdict['edges']['width'])
+    pc.set_transform(ccrs.PlateCarree())
+
+    logger.debug("Adding collection to plot axes")
+    if plotdict["projection"]["projection"] != "PlateCarree":
+        logger.info(f"Interpolating to {plotdict['projection']['projection']} projection; this may take a while...")
+    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
+        coll = ax.add_collection(pc, autolim=True)
+        ax.autoscale()
+    else:
+        coll = ax.add_collection(pc)
+
+    logger.debug("Configuring plot title")
+    if plottitle:=plotdict["title"].get("text"):
+        plt.title(plottitle.format_map(patterns), wrap=True, fontsize=plotdict["title"]["fontsize"])
+    else:
+        logger.warning("No 'text' field for title specified, creating plot with no title")
+
+    logger.debug("Configuring plot colorbar")
+    if plotdict.get("colorbar"):
+        if plotdict.get("colorbar").get("enable"):
+            cb = plotdict["colorbar"]
+            cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
+            if cb.get("label"):
+                cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
+                cbar.ax.tick_params(labelsize=cb["fontsize"])
+
+    # Make sure any subdirectories exist before we try to write the file
+    if os.path.dirname(outfile):
+        os.makedirs(os.path.dirname(outfile),exist_ok=True)
+    logger.debug(f"Saving plot {outfile}")
+    plt.savefig(outfile,format=fmt)
+    plt.close(fig)
+    logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
+
+
 def setupargs(config_d: dict,uxds: ux.UxDataset):
     """
     Sets up the argument list for plotit to allow for parallelization with Python starmap
@@ -309,6 +523,10 @@ def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False):
     root_logger.debug("Logging configured")
 
 
+def worker_init(debug=False):
+    setup_logging(debug=debug)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
@@ -350,7 +568,7 @@ if __name__ == "__main__":
         logger.info(f"Plotting in parallel with {args.procs} tasks")
     # This is needed to avoid some kind of file handle clobbering mumbo-jumbo with netCDF
     multiprocessing.set_start_method("spawn")
-    with multiprocessing.Pool(processes=args.procs) as pool:
+    with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
         pool.starmap(plotithandler, plotargs)
 
     logger.info("Done plotting all figures!")
