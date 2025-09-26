@@ -22,7 +22,6 @@ import cartopy.feature as cfeature
 import cartopy.crs as ccrs
 
 
-print("Importing uxarray; this may take a while...")
 import uxarray as ux
 import xarray as xr
 
@@ -280,8 +279,13 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
                 # plot:colors is a list of color values for the custom colormap and is handled separately
                 continue
             logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
-            plotdict[setting]=cmap_settings[setting]
-        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"])
+            if isinstance(plotdict.get(setting),dict):
+                plotdict[setting]=deep_merge(plotdict[setting],cmap_settings[setting])
+            else:
+                plotdict[setting]=cmap_settings[setting]
+        if not (colorbins:=plotdict.get("colorbins")):
+            colorbins=256
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"],N=colorbins)
     else:
         raise ValueError(f"Requested color map {cmapname} is not valid")
 
@@ -375,6 +379,11 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
             if cb.get("label"):
                 cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
                 cbar.ax.tick_params(labelsize=cb["fontsize"])
+            if dl:=cb.get("datalabels"):
+                bounds = sorted(dl.keys())
+                labels = list(dl.values()) # text labels
+                cbar.set_ticks(bounds)
+                cbar.set_ticklabels(labels)
 
     # Make sure any subdirectories exist before we try to write the file
     if os.path.dirname(outfile):

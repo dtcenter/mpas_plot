@@ -188,6 +188,7 @@ plot:
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8
+    datalabels: null
 
   # Settings for the output map projection:
   projection:
