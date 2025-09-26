@@ -196,17 +196,29 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
 
     if timestring:
         ftime_dt = datetime.strptime(timestring.strip(), "%Y-%m-%d_%H:%M:%S")
-
-    try:
-        plotit(config_d['dataset']['vars'][var],field.isel(Time=timeint),var,lev,config_d['dataset']['files'][timeint],ftime_dt)
-    except Exception as e:
-        logger.error(f'Could not plot variable {var}, level {lev}, time {timeint}')
-        logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field.isel(Time=timeint)=}\n"\
-                     f"{var=}\n{lev=}\n{config_d['dataset']['files'][timeint]=}\n{ftime_dt=}"\
-                     f"{config_d['dataset']['vars'][var]['plot']=}")
-        logger.error(f"{traceback.print_tb(e.__traceback__)}:")
-        logger.error(f"{type(e).__name__}:")
-        logger.error(e)
+    # timeint was set to -1 in setup_args if variable has no time dimension
+    if timeint == -1:
+        try:
+            plotit(config_d['dataset']['vars'][var],field,var,lev,config_d['dataset']['files'][0],ftime_dt)
+        except Exception as e:
+            logger.error(f'Could not plot variable {var}, level {lev}')
+            logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field=}\n"\
+                         f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}"\
+                         f"{config_d['dataset']['vars'][var]['plot']=}")
+            logger.error(f"{traceback.print_tb(e.__traceback__)}:")
+            logger.error(f"{type(e).__name__}:")
+            logger.error(e)
+    else:
+        try:
+            plotit(config_d['dataset']['vars'][var],field.isel(Time=timeint),var,lev,config_d['dataset']['files'][timeint],ftime_dt)
+        except Exception as e:
+            logger.error(f'Could not plot variable {var}, level {lev}, time {timeint}')
+            logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field.isel(Time=timeint)=}\n"\
+                         f"{var=}\n{lev=}\n{config_d['dataset']['files'][timeint]=}\n{ftime_dt=}"\
+                         f"{config_d['dataset']['vars'][var]['plot']=}")
+            logger.error(f"{traceback.print_tb(e.__traceback__)}:")
+            logger.error(f"{type(e).__name__}:")
+            logger.error(e)
 
 
 def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
@@ -425,14 +437,27 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
             for i in range(uxds.sizes["Time"]):
                 logger.debug(f"Plotting time step {i}")
                 if "xtime" in uxds:
-                    ftime=uxds["xtime"].isel(Time=i)
                     times.append("".join(uxds["xtime"].isel(Time=i).values.astype(str)))
+                else:
+                    logger.warning(f"'xtime' variable not found in input file, using dummy time value")
+                    times.append("1900-01-01_00:00:00")
+            for lev in levels:
+                i=0
+                for timestring in times:
+                    args.append( (config_d,uxds,var,lev,i,timestring) )
+                    i+=1
 
-        for lev in levels:
-            i=0
-            for timestring in times:
-                args.append( (config_d,uxds,var,lev,i,timestring) )
-                i+=1
+        else:
+            logger.debug(f"{var} has no time dimension")
+            if "xtime" in uxds:
+                logger.debug("Using first xtime value in file")
+                timestring="".join(uxds["xtime"].isel(Time=0).values.astype(str))
+            else:
+                logger.warning(f"'xtime' variable not found in input file, using dummy time value")
+                timestring="1900-01-01_00:00:00"
+
+            for lev in levels:
+                args.append( (config_d,uxds,var,lev,-1,timestring) )
 
     return args
 
@@ -466,7 +491,7 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
         sys.exit(1)
 
     # Update the dict read from defaults file with the dict read from user config file
-    expt_config.update_values(user_config)
+    expt_config.update_from(user_config)
 
     if not expt_config["dataset"].get("gridfile"):
         expt_config["dataset"]["gridfile"]=""

@@ -10,5 +10,5 @@ dependencies:
   - netcdf4
   - xarray
   - cartopy
-  - uwtools=2.3*
+  - uwtools=2.9*
   - uxarray=2025.01*
