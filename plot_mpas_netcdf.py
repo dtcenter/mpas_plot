@@ -471,6 +471,46 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
     return args
 
 
+def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False):
+    """
+    Sets up logging, printing high-priority (INFO and higher) messages to screen, and printing all
+    messages with detailed timing and routine info in the specified text file.
+
+    If debug = True, print all messages to both screen and log file.
+    """
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+
+    # Prevent duplicate handlers if called more than once
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Console handler
+    console = logging.StreamHandler()
+    console.setLevel(logging.DEBUG if debug else logging.INFO)
+    console_formatter = logging.Formatter("%(levelname)-8s %(message)s")
+    console.setFormatter(console_formatter)
+
+    # File handler
+    fh = logging.FileHandler(logfile, mode="w")
+    fh.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        "%(asctime)s %(name)s.%(funcName)s %(levelname)-8s %(message)s",
+        "%Y-%m-%d %H:%M:%S",
+    )
+    fh.setFormatter(file_formatter)
+
+    # Add handlers
+    root_logger.addHandler(console)
+    root_logger.addHandler(fh)
+
+
+    # Suppress debug prints from matplotlib
+    logging.getLogger("matplotlib").setLevel(logging.INFO)
+
+    root_logger.debug("Logging configured")
+
+
 def setup_config(config: str, default: str="default_options.yaml") -> dict:
     """
     Function for reading in dictionary of configuration settings, and performing basic checks
@@ -517,46 +557,6 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
     logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()
     return expt_config
-
-
-def setup_logging(logfile: str = "log.mpas_plot", debug: bool = False):
-    """
-    Sets up logging, printing high-priority (INFO and higher) messages to screen, and printing all
-    messages with detailed timing and routine info in the specified text file.
-
-    If debug = True, print all messages to both screen and log file.
-    """
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-
-    # Prevent duplicate handlers if called more than once
-    if root_logger.hasHandlers():
-        root_logger.handlers.clear()
-
-    # Console handler
-    console = logging.StreamHandler()
-    console.setLevel(logging.DEBUG if debug else logging.INFO)
-    console_formatter = logging.Formatter("%(levelname)-8s %(message)s")
-    console.setFormatter(console_formatter)
-
-    # File handler
-    fh = logging.FileHandler(logfile, mode="w")
-    fh.setLevel(logging.DEBUG)
-    file_formatter = logging.Formatter(
-        "%(asctime)s %(name)s.%(funcName)s %(levelname)-8s %(message)s",
-        "%Y-%m-%d %H:%M:%S",
-    )
-    fh.setFormatter(file_formatter)
-
-    # Add handlers
-    root_logger.addHandler(console)
-    root_logger.addHandler(fh)
-
-
-    # Suppress debug prints from matplotlib
-    logging.getLogger("matplotlib").setLevel(logging.INFO)
-
-    root_logger.debug("Logging configured")
 
 
 def worker_init(debug=False):
