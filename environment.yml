@@ -11,4 +11,4 @@ dependencies:
   - xarray
   - cartopy
   - uwtools=2.9*
-  - uxarray=2025.09*
+  - uxarray=2025.05*

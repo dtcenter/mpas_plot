@@ -1,12 +1,24 @@
-# This is an example configure file; for additional documentation and a list of all available options, see default_options.yaml
+dataset:
+  files: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/diag.2025-05-08_00.00.00.nc'
+  gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.static.nc'
+  #gridfile: '/glade/work/kavulich/MPAS/tutorial/120km_global/rundir/x1.40962.init.nc'
+  vars:
+    t2m:
+      source: native
+      plot:
+        lakes:
+          scale: '10m'
+          enable: False
+          color: 'lightblue'
+    precipw:
+      source: native
+    rainnc:
+      source: native
+    refl10cm_1km:
+      source: native
+      plot:
+        colormap: radar_refl
 
-data:
-  filename: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
-#  gridfile: /glade/work/kavulich/MPAS/tutorial/120km_global/rundir/history.2025-05-13_00.00.00.nc
-  var:
-    - qv
-  lev:
-    - 9
 plot:
   # {var} = Variable name
   # {lev} = Variable level
@@ -17,32 +29,31 @@ plot:
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
 
-  filename: '{var}_{lev}.png'
+  filename: 'tutorial_data/{var}_lev{lev}_{date}_{time}.png'
   title:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
+  edges:
+    #    color: black
+    color: face
+    # set width to 0 to have no borders
+    width: 0.1
+  boundaries:
+    detail: 0
+    scale: '10m'
+    color: 'k'
+    linewidth: 0.5
+  coastlines:
+    scale: '10m'
+    color: 'k'
+    linewidth: 0.2
   colorbar:
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8
-  boundaries:
-    detail: 0
-    scale: '50m'
-    color: 'black'
-
-  coastlines:
-    color: 'black'
-    linewidth: 0.5
   # Colormap for output from Matplotlib. Reference: https://matplotlib.org/stable/gallery/color/colormap_reference.html
   colormap: "viridis"
   dpi: 300
-  figheight: 4
-  figwidth: 8
+  figwidth: 5
   projection:
     projection: PlateCarree
-    latrange:
-      - 10
-      - 45
-    lonrange:
-      - -110
-      - -30

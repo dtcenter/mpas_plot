@@ -252,7 +252,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
                                                           remap_to='face centers', k=3)
         logger.debug(f"Data slice after interpolation:\n{varslice=}")
 
-    logger.info(f"{varslice=}")
+    logger.debug(f"{varslice=}")
 
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     if plotdict["periodic_bdy"]:
@@ -499,6 +499,9 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
         logger.critical(f"Error reading {config}, check above error trace for details")
         sys.exit(1)
 
+    if user_config.get("data"):
+        logger.error(f"Found 'data' section in {config}, which is invalid.")
+        raise ValueError("You may be using an old config file format; see config_plot.yaml.example")
     # Update the dict read from defaults file with the dict read from user config file
     expt_config.update_from(user_config)
 
