@@ -509,9 +509,6 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
         expt_config["dataset"]["gridfile"]=""
 
     # Perform consistency checks
-    if not expt_config["data"].get("lev"):
-        logger.debug("Level not specified in config, will use level 0 if multiple found")
-        expt_config["data"]["lev"]=0
 
     if isinstance(expt_config["plot"]["title"],str):
         raise TypeError("plot:title should be a dictionary, not a string\n"\

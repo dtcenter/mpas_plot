@@ -10,23 +10,27 @@
 # these variables are labeled "(mandatory)".
 
 # This section is for variables related to the specific data you want to plot
-data:
+dataset:
   #
-  # filename (mandatory):
+  # files (mandatory):
   # Full or relative path to filename containing MPAS data you wish to plot. Can be a single file,
   # a glob-able regex pattern match (e.g. /path/to/nc/data/*.nc), or a list of files
   #
   # gridfile:
   # Some MPAS files (usually "diag" files) do not contain grid information; in these cases you
-  # must specify a "gridfile" that contains the grid information for the script to read
+  # must specify a "gridfile" that contains the grid information for the script to read. This can
+  # be a static.nc file, init.nc file, or even a history file from the MPAS forecast
   # NOTE: Since only one gridfile can be specified, it is not possible to mix-and-match gridded
   #       and gridless files
   #
-  # var:
-  # Variable name to plot. Can be a list of variable names, or the string "all" (default).
-  #
-  # lev: Variable level to plot (for variables with multiple vertical levels). Can be a list of
-  # level numbers, or the string "all". Default is level 1.
+  filename: ''
+  gridfile: ''
+
+  # vars:
+  # Dictionary of variables to plot. The key(s) of this dictionary should be the name of the
+  # variables to plot, and the value for each key should be a dictionary of settings; for each
+  # variable, source: is the only required variable. See config_plot.yaml.example for examples
+  # of how this section can be filled in.
 
   # Note that for 'var' and 'lev', unless you are specifying "all", you must provide a list of
   # values, even if there is just one item in that list. Some specific examples of how to specify
@@ -54,11 +58,13 @@ data:
 
   filename: ''
   gridfile: ''
-  var: all
-  lev:
-    - 0
+  vars:
+    t2m:
+      source: native
 
-# This section is for variables related to how the plot(s) is/are created.
+# This section is for variables related to how the plot(s) is/are created. Note that any settings
+# here can be overridden on a per-variable basis above, by including a plot: section under any
+# specific variable
 plot:
   # filename:
   # The filename of the output plot(s). If an extension is included (e.g. ".png"), it will determine the format of the image.
