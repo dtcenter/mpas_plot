@@ -33,9 +33,11 @@ from plot_functions import set_map_projection, set_patterns_and_outfile
 
 logger = logging.getLogger(__name__)
 
-# =====================
-# Recursive variable parsing
-# =====================
+# Custom error class for ensuring subprocess exceptions are handled correctly
+class PlotError(Exception):
+    pass
+
+
 def get_vars_to_read(var_defs: dict, name: str, seen=None) -> set:
     """
     Recursively return all native variables needed to compute `name`.
@@ -60,9 +62,7 @@ def get_vars_to_read(var_defs: dict, name: str, seen=None) -> set:
     else:
         raise ValueError(f"Unknown source type {cfg['source']} for {name}")
 
-# =====================
-# Lazy UxDataset opening
-# =====================
+
 def open_ux_subset(gridfile, datafiles, vars_to_keep):
 
     if isinstance(datafiles, str):
@@ -197,27 +197,9 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
         ftime_dt = datetime.strptime(timestring.strip(), "%Y-%m-%d_%H:%M:%S")
     # timeint was set to -1 in setup_args if variable has no time dimension
     if timeint == -1:
-        try:
-            plotit(config_d['dataset']['vars'][var],field,var,lev,config_d['dataset']['files'][0],ftime_dt)
-        except Exception as e:
-            logger.error(f'Could not plot variable {var}, level {lev}')
-            logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field=}\n"\
-                         f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}"\
-                         f"{config_d['dataset']['vars'][var]['plot']=}")
-            logger.error(f"{traceback.print_tb(e.__traceback__)}:")
-            logger.error(f"{type(e).__name__}:")
-            logger.error(e)
+        plotit(config_d['dataset']['vars'][var],field,var,lev,config_d['dataset']['files'][0],ftime_dt)
     else:
-        try:
             plotit(config_d['dataset']['vars'][var],field.isel(Time=timeint),var,lev,config_d['dataset']['files'][timeint],ftime_dt)
-        except Exception as e:
-            logger.error(f'Could not plot variable {var}, level {lev}, time {timeint}')
-            logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]}\n{field.isel(Time=timeint)=}\n"\
-                         f"{var=}\n{lev=}\n{config_d['dataset']['files'][timeint]=}\n{ftime_dt=}"\
-                         f"{config_d['dataset']['vars'][var]['plot']=}")
-            logger.error(f"{traceback.print_tb(e.__traceback__)}:")
-            logger.error(f"{type(e).__name__}:")
-            logger.error(e)
 
 
 def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
@@ -255,13 +237,20 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     logger.debug(f"{varslice=}")
 
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
-    if plotdict["periodic_bdy"]:
-        logger.info("Creating polycollection with periodic_bdy=True")
-        logger.info("NOTE: This option can be very slow for large domains")
-        pc=varslice.to_polycollection(periodic_elements='split')
-    else:
-        pc=varslice.to_polycollection()
-    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+    try:
+        if plotdict["periodic_bdy"]:
+            logger.info("Creating polycollection with periodic_bdy=True")
+            logger.info("NOTE: This option can be very slow for large domains")
+            pc=varslice.to_polycollection(periodic_elements='split')
+        else:
+            pc=varslice.to_polycollection()
+        logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+    except ValueError as e:
+        logger.critical(e)
+        msg=f"Variable {var} may not have standard vertical levels (nVertLevels):\n"
+        msg+=f"dimensions={varslice.dims}\n"
+        msg+="Check documentation for how to handle variables with non-standard vertical levels"
+        raise PlotError(msg)
 
     pc.set_antialiased(False)
 
@@ -530,14 +519,14 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
     except Exception as e:
         logger.critical(e)
         logger.critical(f"Error reading {config}, check above error trace for details")
-        sys.exit(1)
+        raise SystemExit
     logger.debug(f"Reading options file {config}")
     try:
         user_config = uwconfig.get_yaml_config(config=config)
     except Exception as e:
         logger.critical(e)
         logger.critical(f"Error reading {config}, check above error trace for details")
-        sys.exit(1)
+        raise SystemExit
 
     if user_config.get("data"):
         logger.error(f"Found 'data' section in {config}, which is invalid.")
