@@ -1,5 +1,8 @@
 This README contains instructions for using `mpas_plot` utilities, including setting up the environment
 
+For detailed examples of different plotting functions, see the GitHub wiki:
+https://github.com/dtcenter/mpas_plot/wiki/mpas_plot-config-examples-and-use-cases
+
 # Environment setup
 
 ## Setting up conda and mpas_plot conda environment
