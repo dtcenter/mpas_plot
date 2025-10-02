@@ -32,35 +32,39 @@ dataset:
   # variable, source: is the only required variable. See config_plot.yaml.example for examples
   # of how this section can be filled in.
 
-  # Note that for 'var' and 'lev', unless you are specifying "all", you must provide a list of
-  # values, even if there is just one item in that list. Some specific examples of how to specify
-  # various combinations of variable and levels are provided below.
+  # Note that for 'lev' you must provide a list of values, even if there is just one item in that
+  # list. If no 'lev' is provided, all levels will be plotted. Some specific examples of how to
+  # specify various combinations of variable and levels are provided below:
 
-  # To plot all variables at the 9th vertical level, use the following settings:
-  #   var: all
-  #   lev:
-  #     - 9
+  # To plot the variable t2m at the 9th vertical level, use the following settings:
+  #   vars:
+  #     t2m:
+  #       source: native
+  #       lev:
+  #         - 9
+  #
   # To plot the variables qv and rho at all levels, use the following settings:
-  #   var:
-  #     - qv
-  #     - rho
-  #   lev: all
-  # To plot the variable t2m at levels 1 through 6, use the following settings:
-  #   var:
-  #     - t2m
-  #   lev:
-  #     - 1
-  #     - 2
-  #     - 3
-  #     - 4
-  #     - 5
-  #     - 6
+  #   vars:
+  #     qv:
+  #       source: native
+  #     rho:
+  #       source: native
+  #
+  # To plot the variable t2m at levels 1-6, and vorticity at all levels, use the following settings:
+  #   vars:
+  #     t2m:
+  #       source: native
+  #       lev:
+  #         - 1
+  #         - 2
+  #         - 3
+  #         - 4
+  #         - 5
+  #         - 6
+  #     rho:
+  #       source: native
 
-  filename: ''
-  gridfile: ''
   vars:
-    t2m:
-      source: native
 
 # This section is for variables related to how the plot(s) is/are created. Note that any settings
 # here can be overridden on a per-variable basis above, by including a plot: section under any
