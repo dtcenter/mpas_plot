@@ -302,8 +302,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     else:
         ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
-    if None not in [ plotdict["vmin"], plotdict["vmax"]]:
-        pc.set_clim(plotdict["vmin"],plotdict["vmax"])
+    pc.set_clim(vmin=plotdict["vmin"],vmax=plotdict["vmax"])
 
     #Plot political boundaries if requested
     if plotdict.get("boundaries"):
