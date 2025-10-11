@@ -7,6 +7,7 @@ import logging
 import os
 import traceback
 
+import numpy as np
 import cartopy.crs as ccrs
 
 logger = logging.getLogger(__name__)
@@ -219,4 +220,47 @@ def set_map_projection(confproj) -> ccrs.Projection:
                         continue
 
     raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{valid}")
+
+
+def get_data_extent(raster, lon_bounds=(-180, 180), lat_bounds=(-90, 90)):
+    """
+    Computes data extent from image raster for automatic zooming to data domain
+
+    Parameters
+    ----------
+    raster : np.ndarray
+        2D raster array with NaNs outside valid region
+    lon_bounds : tuple(float, float)
+        Longitude range corresponding to full raster width
+    lat_bounds : tuple(float, float)
+        Latitude range corresponding to full raster height
+
+    Returns
+    -------
+    extent : list [lon_min, lon_max, lat_min, lat_max]
+    """
+    valid = ~np.isnan(raster)
+    if not np.any(valid):
+        # no data at all
+        return lon_bounds + lat_bounds
+
+    # pixel indices of valid data
+    ys, xs = np.where(valid)
+
+    # convert indices to lon/lat using proportional scaling
+    nrows, ncols = raster.shape
+    lon_min, lon_max = lon_bounds
+    lat_min, lat_max = lat_bounds
+
+    x_min = lon_min + (xs.min() / ncols) * (lon_max - lon_min)
+    x_max = lon_min + (xs.max() / ncols) * (lon_max - lon_min)
+    y_min = lat_max - (ys.max() / nrows) * (lat_max - lat_min)
+    y_max = lat_max - (ys.min() / nrows) * (lat_max - lat_min)
+
+    pad_fraction=0.05
+    dx = (x_max - x_min) * pad_fraction
+    dy = (y_max - y_min) * pad_fraction
+    # y dimension is flipped for some reason
+    return [x_min - dx, x_max + dx, -y_max - dy, -y_min + dy]
+
 
