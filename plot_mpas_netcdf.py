@@ -28,7 +28,7 @@ import xarray as xr
 import uwtools.api.config as uwconfig
 import custom_functions
 
-from plot_functions import set_map_projection, set_patterns_and_outfile
+from plot_functions import set_map_projection, set_patterns_and_outfile, get_data_extent
 
 
 logger = logging.getLogger(__name__)
@@ -236,73 +236,17 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
 
     logger.debug(f"{varslice=}")
 
-    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
-    try:
-        if plotdict["periodic_bdy"]:
-            logger.info("Creating polycollection with periodic_bdy=True")
-            logger.info("NOTE: This option can be very slow for large domains")
-            pc=varslice.to_polycollection(periodic_elements='split')
-        else:
-            pc=varslice.to_polycollection()
-        logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
-    except ValueError as e:
-        logger.critical(e)
-        msg=f"Variable {var} may not have standard vertical levels (nVertLevels):\n"
-        msg+=f"dimensions={varslice.dims}\n"
-        msg+="Check documentation for how to handle variables with non-standard vertical levels"
-        raise PlotError(msg)
-
-    pc.set_antialiased(False)
-
-    # Handle color mapping
-    cmapname=plotdict["colormap"]
-    if cmapname in plt.colormaps():
-        cmap=mpl.colormaps[cmapname]
-        pc.set_cmap(plotdict["colormap"])
-    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
-        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
-        #Overwrite additional settings specified in colormap file
-        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
-        for setting in cmap_settings:
-            if setting == "colors":
-                # plot:colors is a list of color values for the custom colormap and is handled separately
-                continue
-            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
-            if isinstance(plotdict.get(setting),dict):
-                plotdict[setting]=deep_merge(plotdict[setting],cmap_settings[setting])
-            else:
-                plotdict[setting]=cmap_settings[setting]
-        if not (colorbins:=plotdict.get("colorbins")):
-            colorbins=256
-        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"],N=colorbins)
-    else:
-        raise ValueError(f"Requested color map {cmapname} is not valid")
-
-    if not plotdict["plot_over"]:
-        cmap.set_over(alpha=0)
-    if not plotdict["plot_under"]:
-        cmap.set_under(alpha=0)
-    pc.set_cmap(cmap)
-
     # Set up map projection properties
     logger.debug(plotdict["projection"])
     proj=set_map_projection(plotdict["projection"])
 
+    # Create figure and plot axes
     fig, ax = plt.subplots(1, 1, figsize=(plotdict["figwidth"],
                            plotdict["figheight"]), dpi=plotdict["dpi"],
                            constrained_layout=True,
                            subplot_kw=dict(projection=proj))
 
-    # Check the valid file formats supported for this figure
-    validfmts=fig.canvas.get_supported_filetypes()
-
-    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
-    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
-        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
-    else:
-        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
-
-    pc.set_clim(vmin=plotdict["vmin"],vmax=plotdict["vmax"])
+    # Create figure and plot axes
 
     #Plot political boundaries if requested
     if plotdict.get("boundaries"):
@@ -311,7 +255,6 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
             # Users can set these values to scalars or lists; if scalar provided, re-format to list with three identical values
             for setting in ["color", "linewidth", "scale"]:
                 if type(pb[setting]) is not list:
-
                     pb[setting]=[pb[setting],pb[setting],pb[setting]]
             if pb["detail"]==2:
                 ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
@@ -337,21 +280,107 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
             ax.add_feature(cfeature.NaturalEarthFeature(category='physical',edgecolor=pl["color"],facecolor='none',
                            linewidth=pl["linewidth"], scale=pl["scale"], name='lakes'))
 
+
+    # Handle color mapping
+    cmapname=plotdict["colormap"]
+    if cmapname in plt.colormaps():
+        cmap=mpl.colormaps[cmapname]
+    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
+        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
+        #Overwrite additional settings specified in colormap file
+        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
+        for setting in cmap_settings:
+            if setting == "colors":
+                # plot:colors is a list of color values for the custom colormap and is handled separately
+                continue
+            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
+            if isinstance(plotdict.get(setting),dict):
+                plotdict[setting]=deep_merge(plotdict[setting],cmap_settings[setting])
+            else:
+                plotdict[setting]=cmap_settings[setting]
+        if not (colorbins:=plotdict.get("colorbins")):
+            colorbins=256
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"],N=colorbins)
+    else:
+        raise ValueError(f"Requested color map {cmapname} is not valid")
+
+    if not plotdict["plot_over"]:
+        cmap.set_over(alpha=0)
+    if not plotdict["plot_under"]:
+        cmap.set_under(alpha=0)
+
+
+    logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+
+    # Create image with polycollection or raster
+    if plotdict["polycollection"]:
+        try:
+            if plotdict["periodic_bdy"]:
+                logger.info("Creating polycollection with periodic_bdy=True")
+                logger.info("NOTE: This option can be very slow for large domains")
+                pc=varslice.to_polycollection(periodic_elements='split')
+            else:
+                pc=varslice.to_polycollection()
+            logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
+        except ValueError as e:
+            logger.critical(e)
+            msg=f"Variable {var} may not have standard vertical levels (nVertLevels):\n"
+            msg+=f"dimensions={varslice.dims}\n"
+            msg+="Check documentation for how to handle variables with non-standard vertical levels"
+            raise PlotError(msg)
+
+        pc.set_antialiased(False)
+
+        pc.set_edgecolor(plotdict['edges']['color'])
+        pc.set_linewidth(plotdict['edges']['width'])
+        pc.set_transform(ccrs.Geodetic())
+
+        logger.debug("Adding collection to plot axes")
+        if plotdict["projection"]["projection"] != "PlateCarree":
+            logger.info(f"Interpolating to {plotdict['projection']['projection']} projection; this may take a while...")
+        if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
+            img = ax.add_collection(pc, autolim=True)
+            ax.autoscale()
+        else:
+            img = ax.add_collection(pc)
+    else:
+        ax.set_global()
+        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+        raster = varslice.to_raster(ax=ax, pixel_ratio=1)
+        img = ax.imshow(
+            raster,
+            cmap=cmap,
+            origin="lower",
+            extent=ax.get_xlim() + ax.get_ylim(),
+        )
+
+    img.set_clim(vmin=plotdict["vmin"],vmax=plotdict["vmax"])
+    img.set_cmap
+
+    # Check the valid file formats supported for this figure
+    validfmts=fig.canvas.get_supported_filetypes()
+
+    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
+        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+        if plotdict["polycollection"]:
+            extent=img.get_extent()
+        else:
+            # For raster plots, we need to determine the data bounds manually
+            extent=get_data_extent(raster)
+
+        print(f"{extent=}")
+        print(f"ax.set_extent({extent}, crs=ccrs.PlateCarree())")
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
+    else:
+        print(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+        print(f"ax.set_extent({[plotdict['projection']['lonrange'][0], plotdict['projection']['lonrange'][1], plotdict['projection']['latrange'][0], plotdict['projection']['latrange'][1]]}, crs=ccrs.PlateCarree())")
+        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+
+    # Check the valid file formats supported for this figure
+    validfmts=fig.canvas.get_supported_filetypes()
     # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
     patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,plotdict)
-
-    pc.set_edgecolor(plotdict['edges']['color'])
-    pc.set_linewidth(plotdict['edges']['width'])
-    pc.set_transform(ccrs.PlateCarree())
-
-    logger.debug("Adding collection to plot axes")
-    if plotdict["projection"]["projection"] != "PlateCarree":
-        logger.info(f"Interpolating to {plotdict['projection']['projection']} projection; this may take a while...")
-    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
-        coll = ax.add_collection(pc, autolim=True)
-        ax.autoscale()
-    else:
-        coll = ax.add_collection(pc)
 
     logger.debug("Configuring plot title")
     if plottitle:=plotdict["title"].get("text"):
@@ -363,7 +392,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     if plotdict.get("colorbar"):
         if plotdict.get("colorbar").get("enable"):
             cb = plotdict["colorbar"]
-            cbar = plt.colorbar(coll,ax=ax,orientation=cb["orientation"])
+            cbar = plt.colorbar(img,ax=ax,orientation=cb["orientation"])
             if cb.get("label"):
                 cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
                 cbar.ax.tick_params(labelsize=cb["fontsize"])
