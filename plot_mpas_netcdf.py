@@ -411,7 +411,7 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
 
         vardict=config_d["dataset"]["vars"][var]
         # Plot all levels by default
-        if not vardict.get("lev"):
+        if vardict.get("lev") is None:
             vardict["lev"]="all"
         vardict["vertcoord"]=vardict.get("vertcoord","nVertLevels")
         if vardict["lev"] in [ ["all"], "all" ]:
