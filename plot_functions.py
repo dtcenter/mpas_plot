@@ -222,7 +222,7 @@ def set_map_projection(confproj) -> ccrs.Projection:
     raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{valid}")
 
 
-def get_data_extent(raster, lon_bounds=(-180, 180), lat_bounds=(-90, 90)):
+def get_data_extent_raster(raster, lon_bounds=(-180, 180), lat_bounds=(-90, 90)):
     """
     Computes data extent from image raster for automatic zooming to data domain
 
@@ -264,3 +264,24 @@ def get_data_extent(raster, lon_bounds=(-180, 180), lat_bounds=(-90, 90)):
     return [x_min - dx, x_max + dx, -y_max - dy, -y_min + dy]
 
 
+def get_data_extent(uxda, pad_fraction=0.05):
+    """Return (lon_min, lon_max, lat_min, lat_max) in degrees, with buffer."""
+    try:
+        if "n_face" in uxda.dims:
+            lons = getattr(uxda.uxgrid, "node_lon", None)
+            lats = getattr(uxda.uxgrid, "node_lat", None)
+        else:
+            lons = uxda.lon
+            lats = uxda.lat
+
+        lon_min = np.nanmin(lons)
+        lon_max = np.nanmax(lons)
+        lat_min = np.nanmin(lats)
+        lat_max = np.nanmax(lats)
+
+        dx = (lon_max - lon_min) * pad_fraction
+        dy = (lat_max - lat_min) * pad_fraction
+
+        return [lon_min - dx, lon_max + dx, lat_min - dy, lat_max + dy]
+    except Exception as e:
+        raise RuntimeError(f"Could not determine lat/lon bounds: {e}")

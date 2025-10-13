@@ -312,6 +312,12 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
 
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
 
+    # Set axes extent based on data extent and/or user settings
+
+    extent=get_data_extent(varslice)
+    print(f"{extent=}")
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
+
     # Create image with polycollection or raster
     if plotdict["polycollection"]:
         try:
@@ -344,8 +350,6 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         else:
             img = ax.add_collection(pc)
     else:
-        ax.set_global()
-        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
         raster = varslice.to_raster(ax=ax, pixel_ratio=1)
         img = ax.imshow(
             raster,
@@ -361,21 +365,18 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     validfmts=fig.canvas.get_supported_filetypes()
 
     logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
-    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
-        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
-        if plotdict["polycollection"]:
-            extent=img.get_extent()
-        else:
-            # For raster plots, we need to determine the data bounds manually
-            extent=get_data_extent(raster)
-
-        print(f"{extent=}")
-        print(f"ax.set_extent({extent}, crs=ccrs.PlateCarree())")
-        ax.set_extent(extent, crs=ccrs.PlateCarree())
-    else:
-        print(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
-        print(f"ax.set_extent({[plotdict['projection']['lonrange'][0], plotdict['projection']['lonrange'][1], plotdict['projection']['latrange'][0], plotdict['projection']['latrange'][1]]}, crs=ccrs.PlateCarree())")
-        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
+#    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
+#        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+#        if plotdict["polycollection"]:
+#            extent=img.get_extent()
+#
+#        print(f"{extent=}")
+#        print(f"ax.set_extent({extent}, crs=ccrs.PlateCarree())")
+#        ax.set_extent(extent, crs=ccrs.PlateCarree())
+#    else:
+#        print(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+#        print(f"ax.set_extent({[plotdict['projection']['lonrange'][0], plotdict['projection']['lonrange'][1], plotdict['projection']['latrange'][0], plotdict['projection']['latrange'][1]]}, crs=ccrs.PlateCarree())")
+#        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
     # Check the valid file formats supported for this figure
     validfmts=fig.canvas.get_supported_filetypes()
