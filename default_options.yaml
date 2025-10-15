@@ -10,56 +10,65 @@
 # these variables are labeled "(mandatory)".
 
 # This section is for variables related to the specific data you want to plot
-data:
+dataset:
   #
-  # filename (mandatory):
+  # files (mandatory):
   # Full or relative path to filename containing MPAS data you wish to plot. Can be a single file,
-  # a glob-able regex pattern match (e.g. /path/to/nc/data/*.nc), a list of files, or a list of
-  # glob-able regex pattern matches.
-  # 
+  # a glob-able regex pattern match (e.g. /path/to/nc/data/*.nc), or a list of files
+  #
   # gridfile:
   # Some MPAS files (usually "diag" files) do not contain grid information; in these cases you
-  # must specify a "gridfile" that contains the grid information for the script to read
+  # must specify a "gridfile" that contains the grid information for the script to read. This can
+  # be a static.nc file, init.nc file, or even a history file from the MPAS forecast
   # NOTE: Since only one gridfile can be specified, it is not possible to mix-and-match gridded
   #       and gridless files
   #
-  # var:
-  # Variable name to plot. Can be a list of variable names, or the string "all" (default).
-  # 
-  # lev: Variable level to plot (for variables with multiple vertical levels). Can be a list of
-  # level numbers, or the string "all". Default is level 1.
-
-  # Note that for 'var' and 'lev', unless you are specifying "all", you must provide a list of
-  # values, even if there is just one item in that list. Some specific examples of how to specify
-  # various combinations of variable and levels are provided below.
-
-  # To plot all variables at the 9th vertical level, use the following settings:
-  #   var: all
-  #   lev:
-  #     - 9
-  # To plot the variables qv and rho at all levels, use the following settings:
-  #   var:
-  #     - qv
-  #     - rho
-  #   lev: all
-  # To plot the variable t2m at levels 1 through 6, use the following settings:
-  #   var:
-  #     - t2m
-  #   lev:
-  #     - 1
-  #     - 2
-  #     - 3
-  #     - 4
-  #     - 5
-  #     - 6
-
   filename: ''
   gridfile: ''
-  var: all
-  lev:
-    - 1
 
-# This section is for variables related to how the plot(s) is/are created.
+  # vars:
+  # Dictionary of variables to plot. The key(s) of this dictionary should be the name of the
+  # variables to plot, and the value for each key should be a dictionary of settings; for each
+  # variable, source: is the only required variable. See config_plot.yaml.example for examples
+  # of how this section can be filled in.
+
+  # Note that for 'lev' you must provide a list of values, even if there is just one item in that
+  # list. If no 'lev' is provided, all levels will be plotted. Some specific examples of how to
+  # specify various combinations of variable and levels are provided below:
+
+  # To plot the variable t2m at the 9th vertical level, use the following settings:
+  #   vars:
+  #     t2m:
+  #       source: native
+  #       lev:
+  #         - 9
+  #
+  # To plot the variables qv and rho at all levels, use the following settings:
+  #   vars:
+  #     qv:
+  #       source: native
+  #     rho:
+  #       source: native
+  #
+  # To plot the variable t2m at levels 1-6, and vorticity at all levels, use the following settings:
+  #   vars:
+  #     t2m:
+  #       source: native
+  #       lev:
+  #         - 1
+  #         - 2
+  #         - 3
+  #         - 4
+  #         - 5
+  #         - 6
+  #     rho:
+  #       source: native
+
+  vars:
+
+# This section is for variables related to how the plot(s) is/are created. Note that any settings
+# here can be overridden on a per-variable basis above, by including a plot: section under any
+# specific variable
 plot:
   # filename:
   # The filename of the output plot(s). If an extension is included (e.g. ".png"), it will determine the format of the image.
@@ -67,7 +76,7 @@ plot:
   # format:
   # The image format of the output, if not specified in the filename. See matplotlib documentation for valid options:
   # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html#matplotlib.pyplot.savefig
-  # 
+  #
   # title:
   # Settings controlling the title of the output plot(s) that will appear in the image above the plotted data.
   #   text:
@@ -78,29 +87,17 @@ plot:
   # exists:
   # Handle case when file exists. Valid options are
   #    overwrite  Overwrite existing file
-  #    abort      Raise exception
+  #    abort      Raise an exception
   #    rename     Rename the old file using the scheme {filename}-#.png, where # is the next available sequential integer
-  #
-  # periodic_bdy:
-  # For periodic domains (including global), the plot routines will ignore the periodic boundary by default.
-  # To plot all data, including boundaries, set this option, but it will slow down plotting substantially.
-  #
-  # colormap:
-  # Colormap for output from Matplotlib. Reference documentation for valid options:
-  # https://matplotlib.org/stable/gallery/color/colormap_reference.html
   #
   # dpi:
   # Image dots per inch
   #
   # figheight:
   # Image height in inches
-  # 
+  #
   # figwidth:
   # Image width in inches
-  # 
-  # vmin, vmax:
-  # By default the color range will be scaled to the max/min values of the plotted data. To use a custom range,
-  # set vmin and/or vmax
 
   # NOTE: for text fields such as filename, title, etc., some helpful variables are provided that
   # you can reference in the text string that will be substituted in the final output:
@@ -119,14 +116,39 @@ plot:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
   exists: rename
-  colormap: "viridis"
   dpi: 300
   figheight: 4
   figwidth: 8
+
+  # colormap:
+  # Color scheme to use for output plots. Options can either be standard Matplotlib colormaps (reference
+  # https://matplotlib.org/stable/gallery/color/colormap_reference.html for valid options) or the name of
+  # a custom colormap under the colormaps/ directory (currently just one option: "radar_refl").
+  #
+  # NOTE: custom colormaps also include additional settings that will overwrite user config choices; see
+  # README.md for more information.
+  #
+  colormap: "viridis"
+
+  # periodic_bdy:
+  # For periodic domains (including global), the plot routines will omit the boundary cells by default. To plot
+  # all data, including boundaries, set this option to True, but note that it will slow down plotting substantially.
+  #
   periodic_bdy: False
+
+  # vmin, vmax:
+  # By default the color range will be scaled to the max/min values of the plotted data. To use a custom range,
+  # set vmin and/or vmax
 
   vmin: null
   vmax: null
+
+  # plot_under, plot_over:
+  # By default any values above vmax or below vmin will be plotted as the color for vmax/vmin respectively.
+  # To omit these out-of-range values all together, set plot_over/plot_under to False respectively.
+
+  plot_under: True
+  plot_over: True
 
   # Settings for plotting grid cell borders. To disable cell borders, set color="face" (colors the border the same as cell face)
   # or set width=0
@@ -134,23 +156,32 @@ plot:
     color: face
     width: 0.1
 
-  # Settings for plotting political boundaries. To disable political boundaries, specify "boundaries:" with no options
+  # Settings for plotting political boundaries. Settings scale, color, linewidth can either be a single value (to apply to all boundaries)
+  # or a list of values to apply to the specific level 0, 1, or 2 boundaries described below
   boundaries:
+    enable: True
     # Level of political boundaries to plot. Level 0 is national boundaries, Level 1 is sub-national boundaries (e.g.
     # states, provinces, etc.), Level 2 is county boundaries (US only); counties require 10m scale
     detail: 0
+    color: ['black','black','black']
+    linewidth: [0.2,0.2,0.2]
+    # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
+    scale: ['50m','50m','50m']
+
+  # Settings for plotting coastlines.
+  coastlines:
+    enable: True
+    # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
+    scale: '10m'
+    color: 'black'
+    linewidth: 0.5
+
+  # Settings for plotting lakes.
+  lakes:
+    enable: False
     # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
     scale: '50m'
     color: 'black'
-
-  # Settings for plotting coastlines. To disable coastlines, specify "coastlines:" with no options
-  coastlines:
-    # Scale is the resolution of the plotted boundary dataset. Options are 110m, 50m, and 10m.
-    scale: '10m'
-    # Most standard Matplotlib arguments for shapes will work here, but I haven't figured out good documentation on which.
-    # The ones listed here work, but likely a lot more customization can happen here.
-    color: 'black'
-    facecolor: 'none'
     linewidth: 0.5
 
   # Settings for the plot's color bar
@@ -163,10 +194,11 @@ plot:
     #
     # fontsize:
     # Font size for the colobar label.
-
+    enable: True
     orientation: vertical
     label: 'Units: {units}'
     fontsize: 8
+    datalabels: null
 
   # Settings for the output map projection:
   projection:

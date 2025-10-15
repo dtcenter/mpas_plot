@@ -1,0 +1,52 @@
+# This custom colormap is designed for plotting MODIFIED_IGBP_MODIS_NOAH land use/vegetation types, including accurate text labels
+plot_under: False
+plot_over: False
+vmin: 0.5
+vmax: 21.5
+colorbar:
+  enable: True
+  datalabels:
+    1: 'Evergreen Needleleaf Forest'
+    2: 'Evergreen Broadleaf Forest'
+    3: 'Deciduous Needleleaf Forest'
+    4: 'Deciduous Broadleaf Forest'
+    5: 'Mixed Forests'
+    6: 'Closed Shrublands'
+    7: 'Open Shrublands'
+    8: 'Woody Savannas'
+    9: 'Savannas'
+    10: 'Grasslands'
+    11: 'Permanent Wetlands'
+    12: 'Croplands'
+    13: 'Urban and Built-up'
+    14: 'Cropland/Natural Vegetation Mosaic'
+    15: 'Snow and Ice'
+    16: 'Barren or Sparsely Vegetated'
+    17: 'Water'
+    18: 'Wooded Tundra'
+    19: 'Mixed Tundra'
+    20: 'Barren Tundra'
+    21: 'Lakes'
+colors:
+ - "#007700"
+ - "#557722"
+ - "#44bb99"
+ - "#00bb22"
+ - "#00ff00"
+ - "#bb8855"
+ - "#eebb66"
+ - "#bbaa44"
+ - "#ffdd22"
+ - "#eeffbb"
+ - "#77ccbb"
+ - "#ffff00"
+ - "#ff0000"
+ - "#ccff66"
+ - "#ffffff"
+ - "#555555"
+ - "#0000ff"
+ - "#aaaaaa"
+ - "#bbaadd"
+ - "#eeeeee"
+ - "#77aadd"
+colorbins: 21

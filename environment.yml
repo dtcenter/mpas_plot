@@ -8,7 +8,7 @@ dependencies:
   - numpy=1.26*
   - matplotlib
   - netcdf4
-  - xarray
+  - xarray=2025.9.0
   - cartopy
-  - uwtools=2.3*
-  - uxarray=2025.01*
+  - uwtools=2.9*
+  - uxarray=2025.05*
