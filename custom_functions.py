@@ -4,6 +4,7 @@ Module for various plotting functions
 """
 import logging
 import uxarray as ux
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +63,18 @@ def vert_min(field: ux.UxDataArray, dim: str = "nVertLevels") -> ux.UxDataArray:
     return vertmin
 
 
+def sum_of_magnitudes(field1: ux.UxDataArray, field2: ux.UxDataArray) -> ux.UxDataArray:
+    """
+    Take two vectors (usually wind vectors) and return the sum of the magnitudes
+    """
+
+    return np.sqrt(np.square(field1) + np.square(field2))
+
 DERIVED_FUNCTIONS = {
     "diff_prev_timestep": diff_prev_timestep,
     "sum_fields": sum_fields,
     "vert_max": vert_max,
     "vert_min": vert_min,
+    "sum_of_magnitudes": sum_of_magnitudes,
 }
 
