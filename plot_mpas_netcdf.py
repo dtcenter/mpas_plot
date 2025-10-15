@@ -300,7 +300,10 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     # Handle color mapping
     cmapname=plotdict["colormap"]
     if cmapname in plt.colormaps():
-        cmap=mpl.colormaps[cmapname]
+        if bins:=plotdict.get("colorbins"):
+            cmap=plt.get_cmap(cmapname, bins)
+        else:
+            cmap=mpl.colormaps[cmapname]
     elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
         cmap_settings = uwconfig.get_yaml_config(config=colorfile)
         #Overwrite additional settings specified in colormap file
@@ -333,11 +336,8 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         logger.info('One or more latitude/longitude range values were not set; plotting full projection')
         extent=get_data_extent(varslice)
     else:
-        print(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
-        print(f"ax.set_extent({[plotdict['projection']['lonrange'][0], plotdict['projection']['lonrange'][1], plotdict['projection']['latrange'][0], plotdict['projection']['latrange'][1]]}, crs=ccrs.PlateCarree())")
         extent=[plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]]
 
-    print(f"{extent=}")
     ax.set_extent(extent, crs=ccrs.PlateCarree())
 
     # Create image with polycollection or raster
@@ -385,20 +385,6 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
 
     # Check the valid file formats supported for this figure
     validfmts=fig.canvas.get_supported_filetypes()
-
-#    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
-#    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
-#        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
-#        if plotdict["polycollection"]:
-#            extent=img.get_extent()
-#
-#        print(f"{extent=}")
-#        print(f"ax.set_extent({extent}, crs=ccrs.PlateCarree())")
-#        ax.set_extent(extent, crs=ccrs.PlateCarree())
-#    else:
-#        print(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
-#        print(f"ax.set_extent({[plotdict['projection']['lonrange'][0], plotdict['projection']['lonrange'][1], plotdict['projection']['latrange'][0], plotdict['projection']['latrange'][1]]}, crs=ccrs.PlateCarree())")
-#        ax.set_extent([plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]], crs=ccrs.PlateCarree())
 
     # Check the valid file formats supported for this figure
     validfmts=fig.canvas.get_supported_filetypes()
@@ -605,6 +591,7 @@ def worker_init(debug=False):
 
 if __name__ == "__main__":
 
+    scriptstart = time.time()
     parser = argparse.ArgumentParser(
         description="Script for plotting a custom field on the native MPAS grid from native NetCDF format files"
     )
@@ -647,4 +634,4 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
         pool.starmap(plotithandler, plotargs)
 
-    logger.info("Done plotting all figures!")
+    logger.info(f"Done plotting all figures! Total time {time.time()-scriptstart} seconds")
