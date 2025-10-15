@@ -17,6 +17,7 @@ import gc, psutil
 proc = psutil.Process(os.getpid())
 
 import matplotlib as mpl
+mpl.use("Agg")
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature
 import cartopy.crs as ccrs
@@ -195,12 +196,27 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
 
     if timestring:
         ftime_dt = datetime.strptime(timestring.strip(), "%Y-%m-%d_%H:%M:%S")
+
     # timeint was set to -1 in setup_args if variable has no time dimension
     if timeint == -1:
-        plotit(config_d['dataset']['vars'][var],field,var,lev,config_d['dataset']['files'][0],ftime_dt)
+        timeint=0
+        plotfield=field
     else:
-            plotit(config_d['dataset']['vars'][var],field.isel(Time=timeint),var,lev,config_d['dataset']['files'][timeint],ftime_dt)
-
+        plotfield=field.isel(Time=timeint)
+    try:
+        plotit(config_d['dataset']['vars'][var],plotfield,var,lev,config_d['dataset']['files'][0],ftime_dt)
+    except KeyboardInterrupt:
+        # Simply return on keyboard interrupts
+        logger.warning("KeyboardInterrupt detected; stopping process...")
+        return
+    except Exception as e:
+        logger.error(f'Could not plot variable {var}, level {lev}')
+        logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
+                      f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
+        logger.error(f"{traceback.print_tb(e.__traceback__)}:")
+        logger.error(f"{type(e).__name__}:")
+        logger.error(e)
+        raise PlotError
 
 def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
     """
@@ -313,8 +329,14 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
 
     # Set axes extent based on data extent and/or user settings
+    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
+        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
+        extent=get_data_extent(varslice)
+    else:
+        print(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+        print(f"ax.set_extent({[plotdict['projection']['lonrange'][0], plotdict['projection']['lonrange'][1], plotdict['projection']['latrange'][0], plotdict['projection']['latrange'][1]]}, crs=ccrs.PlateCarree())")
+        extent=[plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]]
 
-    extent=get_data_extent(varslice)
     print(f"{extent=}")
     ax.set_extent(extent, crs=ccrs.PlateCarree())
 
@@ -350,7 +372,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         else:
             img = ax.add_collection(pc)
     else:
-        raster = varslice.to_raster(ax=ax, pixel_ratio=1)
+        raster = varslice.to_raster(ax=ax, pixel_ratio=plotdict['pixel_ratio'])
         img = ax.imshow(
             raster,
             cmap=cmap,
@@ -364,7 +386,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     # Check the valid file formats supported for this figure
     validfmts=fig.canvas.get_supported_filetypes()
 
-    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
+#    logger.debug(f"{plotdict['projection']['lonrange']=}\n{plotdict['projection']['latrange']=}")
 #    if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
 #        logger.info('One or more latitude/longitude range values were not set; plotting full projection')
 #        if plotdict["polycollection"]:

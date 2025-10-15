@@ -130,10 +130,17 @@ plot:
   #
   colormap: "viridis"
 
+  # pixel_ratio:
+  # This controls the quantity of pixels to sample in the rasterization process; higher numbers result
+  # in higher quality plots, though at a cost of plotting speed.
+  pixel_ratio: 1
+
   # polycollection:
   # NOT RECOMMENDED
   # This is the legacy plotting method that converts the unstructured grid to a set of polygons.
-  # This technically results in higher fidelity plots but can be orders of magnitude slower:
+  # This can be orders of magnitude slower than the default raster method and so is not
+  # recommended for large domains; if you need more detail in your plot, it's recommended to
+  # increase the "pixel_ratio" setting.
   # periodic_bdy:
   # For periodic domains (including global), the polycollection routines will omit the boundary cells by default. To plot
   # all data, including boundaries, set this option to True, but note that it will slow down plotting substantially.
