@@ -1,0 +1,23 @@
+# Colors used for wind speed as defined by NOAA-GSL's pygraf utility
+plot_under: False
+colors:
+ - '#fef8fe'
+ - '#f8d3f9'
+ - '#f1a5f3'
+ - '#e074f0'
+ - '#0045ff'
+ - '#0099ff'
+ - '#00ceff'
+ - '#00e8ff'
+ - '#00ffe6'
+ - '#67d300'
+ - '#7ffa06'
+ - '#b4ff36'
+ - '#eaff12'
+ - '#ffe500'
+ - '#ffc808'
+ - '#ff8608'
+ - '#ff3300'
+ - '#ff0039'
+ - '#f704fc'
+
