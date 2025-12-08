@@ -335,8 +335,16 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     if None in plotdict["projection"]["lonrange"] or None in plotdict["projection"]["latrange"]:
         logger.info('One or more latitude/longitude range values were not set; plotting full projection')
         extent=get_data_extent(varslice)
+        # If auto-calculated extent is greater than globe, reset to full globe
+        if (extent[1] - extent[0]) > 360:
+            extent[1]=180
+            extent[0]=-180
+        if (extent[3] - extent[2]) > 180:
+            extent[3]=90
+            extent[2]=-90
     else:
         extent=[plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]]
+    logger.debug(f'Domain extent: {extent}')
 
     ax.set_extent(extent, crs=ccrs.PlateCarree())
 
