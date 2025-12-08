@@ -30,6 +30,4 @@ fi
 if [[ ! "$LD_LIBRARY_PATH" =~ "$CONDA_BUILD_DIR" ]]; then
   export LD_LIBRARY_PATH=${CONDA_BUILD_DIR}/lib:${LD_LIBRARY_PATH}
 fi
-
-echo "To activate the mpas_plot environment, run this command:"
-echo "  conda activate mpas_plot"
+conda activate mpas_plot
