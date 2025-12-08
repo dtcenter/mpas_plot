@@ -380,7 +380,15 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         else:
             img = ax.add_collection(pc)
     else:
-        raster = varslice.to_raster(ax=ax, pixel_ratio=plotdict['pixel_ratio'])
+        try:
+            raster = varslice.to_raster(ax=ax, pixel_ratio=plotdict['pixel_ratio'])
+        except ValueError as e:
+            logger.critical(e)
+            msg=f"Variable {var} may not have standard vertical levels (nVertLevels):\n"
+            msg+=f"dimensions={varslice.dims}\n"
+            msg+="Check documentation for how to handle variables with non-standard vertical levels"
+            raise PlotError(msg)
+
         img = ax.imshow(
             raster,
             cmap=cmap,
@@ -588,6 +596,16 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
         raise TypeError("plot:title should be a dictionary, not a string\n"\
                         "Adjust your config.yaml accordingly. See default_options.yaml for details.")
 
+    if not (None in expt_config["plot"]["projection"]["lonrange"] or None in expt_config["plot"]["projection"]["latrange"]):
+        lon0=expt_config["plot"]["projection"]["lonrange"][0]
+        lon1=expt_config["plot"]["projection"]["lonrange"][1]
+        lat0=expt_config["plot"]["projection"]["latrange"][0]
+        lat1=expt_config["plot"]["projection"]["latrange"][1]
+        if lon0 >= lon1:
+            raise ValueError(f"plot:projection:lonrange first value {lon0} >= second value {lon1}")
+        if lat0 >= lat1:
+            raise ValueError(f"plot:projection:latrange first value {lat0} >= second value {lat1}")
+
     logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()
     return expt_config
@@ -631,15 +649,19 @@ if __name__ == "__main__":
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     plotargs=setup_args(expt_config,dataset)
 
-    logger.info('Submitting to starmap')
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
     logger.debug(f"{plotargs=}")
     # Make the plots!
     if args.procs > 1:
         logger.info(f"Plotting in parallel with {args.procs} tasks")
-    # This is needed to avoid some kind of file handle clobbering mumbo-jumbo with netCDF
-    multiprocessing.set_start_method("spawn")
-    with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
-        pool.starmap(plotithandler, plotargs)
+        # This is needed to avoid some kind of file handle clobbering mumbo-jumbo with netCDF
+        multiprocessing.set_start_method("spawn")
+        with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
+            pool.starmap(plotithandler, plotargs)
+    else:
+        i=0
+        for instance in plotargs:
+            plotithandler(*plotargs[i])
+            i+=1
 
     logger.info(f"Done plotting all figures! Total time {time.time()-scriptstart} seconds")
