@@ -109,6 +109,8 @@ plot:
   # {fnme} = Name of file (minus extension) being read for plotted data
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
+  # {maxval} = The maximum value in the plotted data
+  # {minval} = The minimum value in the plotted data
 
   filename: '{var}_{lev}.png'
   format: null

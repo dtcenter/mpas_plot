@@ -48,6 +48,10 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     #filename minus extension
     fnme=os.path.splitext(filename)[0]
 
+    # max and min values for plotted field
+    maxval=float(field.max().compute())
+    minval=float(field.min().compute())
+
     pattern_dict = {
         "var": var,
         "lev": lev,
@@ -57,7 +61,9 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
         "fnme": fnme,
         "proj": plotdict["projection"]["projection"],
         "date": "no_Time_dimension",
-        "time": "no_Time_dimension"
+        "time": "no_Time_dimension",
+        "maxval": f"{maxval:.2f}",
+        "minval": f"{minval:.2f}",
     }
     if field.attrs.get("units"):
         pattern_dict.update({
