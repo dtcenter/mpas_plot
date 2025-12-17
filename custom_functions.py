@@ -70,11 +70,31 @@ def sum_of_magnitudes(field1: ux.UxDataArray, field2: ux.UxDataArray) -> ux.UxDa
 
     return np.sqrt(np.square(field1) + np.square(field2))
 
+def max_all_times(field: ux.UxDataArray, dim: str = "Time") -> ux.UxDataArray:
+    """
+    Return the maximum value across all input times for a given point.
+    """
+    # Compute differences along Time
+    result = field.max(dim=dim, keep_attrs=True)
+
+    return result
+
+def min_all_times(field: ux.UxDataArray, dim: str = "Time") -> ux.UxDataArray:
+    """
+    Return the minimum value across all input times for a given point.
+    """
+    # Compute differences along Time
+    result = field.min(dim=dim, keep_attrs=True)
+
+    return result
+
 DERIVED_FUNCTIONS = {
     "diff_prev_timestep": diff_prev_timestep,
     "sum_fields": sum_fields,
     "vert_max": vert_max,
     "vert_min": vert_min,
     "sum_of_magnitudes": sum_of_magnitudes,
+    "max_all_times": max_all_times,
+    "min_all_times": min_all_times,
 }
 
