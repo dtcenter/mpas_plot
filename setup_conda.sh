@@ -1,5 +1,17 @@
 # DO NOT RUN THIS SCRIPT AS A SHELL SCRIPT: IT MUST BE INVOKED USING THE source BUILTIN
 
+# Check for existing conda/ subdirectory from previous installations
+if [ ! -f "conda_loc" ] && [ -d "conda" ] ; then
+  echo "Found existing conda installation in conda/ subdirectory"
+  read -p "Do you want to use the existing conda build? (y/n) " -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]] ; then
+    EXISTING_CONDA_BUILD="$(readlink -f "conda")"
+    echo "${EXISTING_CONDA_BUILD}" > conda_loc
+    echo "Created conda_loc pointing to: ${EXISTING_CONDA_BUILD}"
+  fi
+fi
+
 # Check if conda location file exists
 USE_SYSTEM_CONDA=false
 if [ ! -f "conda_loc" ] && command -v conda &> /dev/null ; then
@@ -22,8 +34,13 @@ fi
 
 if [ "$USE_SYSTEM_CONDA" = false ] ; then
   # Logic taken from UFS SRW Application (https://github.com/ufs-community/ufs-srweather-app)
-  CONDA_BUILD_DIR="conda"
-  echo "Building local conda install in ${CONDA_BUILD_DIR}/"
+  if [ -f "conda_loc" ] ; then
+    CONDA_BUILD_DIR=$(cat conda_loc)
+    echo "Using conda from conda_loc: ${CONDA_BUILD_DIR}"
+  else
+    CONDA_BUILD_DIR="conda"
+    echo "Building local conda install in ${CONDA_BUILD_DIR}/"
+  fi
   os=$(uname)
   if [ ! -d "${CONDA_BUILD_DIR}" ] ; then
     test $os == Darwin && os=MacOSX
