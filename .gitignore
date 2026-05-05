@@ -1,2 +1,5 @@
 #Ignore all png image files
 *.png
+#Ignore conda location and installation
+conda_loc
+conda
