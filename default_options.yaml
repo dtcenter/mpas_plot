@@ -148,7 +148,7 @@ plot:
   # all data, including boundaries, set this option to True, but note that it will slow down plotting substantially.
   #
   polycollection: False
-  periodic_bdy: False
+  periodic_bdy: True # Set to false once UXarray issue is fixed! https://github.com/UXARRAY/uxarray/issues/1507
 
   # vmin, vmax:
   # By default the color range will be scaled to the max/min values of the plotted data. To use a custom range,

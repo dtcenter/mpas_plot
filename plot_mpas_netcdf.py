@@ -364,7 +364,8 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
                 logger.info("NOTE: This option can be very slow for large domains")
                 pc=varslice.to_polycollection(periodic_elements='split')
             else:
-                pc=varslice.to_polycollection()
+                raise Exception("This option does not work (known UXarray bug). Set periodic_bdy: True")
+                pc=varslice.to_polycollection(periodic_elements='exclude')
             logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
         except ValueError as e:
             logger.critical(e)
