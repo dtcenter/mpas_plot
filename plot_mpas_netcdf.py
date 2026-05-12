@@ -206,22 +206,11 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
         plotfield=field.isel(Time=timeint)
     try:
         plotit(config_d['dataset']['vars'][var],plotfield,var,lev,config_d['dataset']['files'][0],ftime_dt)
-#    except KeyboardInterrupt:
-#        # Simply return on keyboard interrupts
-#        logger.warning("KeyboardInterrupt detected; stopping process...")
-#        raise
     except Exception as e:
         logger.error(f'Could not plot variable {var}, level {lev}')
         logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
                       f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
         raise PlotError(traceback.format_exc()) from None
-#    except Exception as e:
-#        logger.error(f'Could not plot variable {var}, level {lev}')
-#        logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
-#                      f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
-#        error=f"{traceback.print_tb(e.__traceback__)}:"
-#        error+=f"{type(e).__name__}:"
-#        raise
 
 def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
     """
@@ -673,14 +662,18 @@ if __name__ == "__main__":
         multiprocessing.set_start_method("spawn")
         try:
             with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
-                pool.starmap(plotithandler, plotargs)
+                result = pool.starmap_async(plotithandler, plotargs)
+                while True:
+                    try:
+                        result.get(timeout=1)
+                        break
+                    except multiprocessing.TimeoutError:
+                        continue
         except KeyboardInterrupt:
             logger.warning("KeyboardInterrupt received; terminating workers...")
             pool.terminate()
             pool.join()
             sys.exit(0)
-#        with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
-#            pool.starmap(plotithandler, plotargs)
     else:
         i=0
         for instance in plotargs:
