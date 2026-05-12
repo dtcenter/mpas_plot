@@ -9,6 +9,7 @@ import logging
 import sys
 import os
 import multiprocessing
+import signal
 import traceback
 import time
 from datetime import datetime
@@ -205,18 +206,22 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
         plotfield=field.isel(Time=timeint)
     try:
         plotit(config_d['dataset']['vars'][var],plotfield,var,lev,config_d['dataset']['files'][0],ftime_dt)
-    except KeyboardInterrupt:
-        # Simply return on keyboard interrupts
-        logger.warning("KeyboardInterrupt detected; stopping process...")
-        return
+#    except KeyboardInterrupt:
+#        # Simply return on keyboard interrupts
+#        logger.warning("KeyboardInterrupt detected; stopping process...")
+#        raise
     except Exception as e:
         logger.error(f'Could not plot variable {var}, level {lev}')
         logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
                       f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
-        logger.error(f"{traceback.print_tb(e.__traceback__)}:")
-        logger.error(f"{type(e).__name__}:")
-        logger.error(e)
-        raise PlotError
+        raise PlotError(traceback.format_exc()) from None
+#    except Exception as e:
+#        logger.error(f'Could not plot variable {var}, level {lev}')
+#        logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
+#                      f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
+#        error=f"{traceback.print_tb(e.__traceback__)}:"
+#        error+=f"{type(e).__name__}:"
+#        raise
 
 def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
     """
@@ -364,7 +369,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
                 logger.info("NOTE: This option can be very slow for large domains")
                 pc=varslice.to_polycollection(periodic_elements='split')
             else:
-                raise Exception("This option does not work (known UXarray bug). Set periodic_bdy: True")
+                raise Exception("periodic_bdy: False does not work (known UXarray bug). Set periodic_bdy: True")
                 pc=varslice.to_polycollection(periodic_elements='exclude')
             logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
         except ValueError as e:
@@ -621,6 +626,7 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
 
 
 def worker_init(debug=False):
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     setup_logging(debug=debug)
 
 
@@ -665,8 +671,16 @@ if __name__ == "__main__":
         logger.info(f"Plotting in parallel with {args.procs} tasks")
         # This is needed to avoid some kind of file handle clobbering mumbo-jumbo with netCDF
         multiprocessing.set_start_method("spawn")
-        with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
-            pool.starmap(plotithandler, plotargs)
+        try:
+            with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
+                pool.starmap(plotithandler, plotargs)
+        except KeyboardInterrupt:
+            logger.warning("KeyboardInterrupt received; terminating workers...")
+            pool.terminate()
+            pool.join()
+            sys.exit(0)
+#        with multiprocessing.Pool(processes=args.procs,initializer=worker_init,initargs=(args.debug,)) as pool:
+#            pool.starmap(plotithandler, plotargs)
     else:
         i=0
         for instance in plotargs:
