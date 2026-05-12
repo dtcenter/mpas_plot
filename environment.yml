@@ -5,7 +5,7 @@ channels:
   - ufs-community
   - defaults
 dependencies:
-  - numpy=1.26*
+  - numpy
   - matplotlib
   - netcdf4
   - cartopy

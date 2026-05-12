@@ -273,6 +273,10 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
                 if type(pb[setting]) is not list:
                     pb[setting]=[pb[setting],pb[setting],pb[setting]]
             if pb["detail"]==2:
+                if pb["scale"][2]!='10m':
+                    logger.info(f"scale={pb['scale'][2]} not supported for county-level boundaries")
+                    logger.info("Setting scale to 10m")
+                    pb["scale"][2]='10m'
                 ax.add_feature(cfeature.NaturalEarthFeature(category='cultural',
                                scale=pb["scale"][2],edgecolor=pb["color"][2],
                                facecolor='none',linewidth=pb["linewidth"][2], name='admin_2_counties'))
@@ -346,7 +350,11 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         extent=[plotdict["projection"]["lonrange"][0], plotdict["projection"]["lonrange"][1], plotdict["projection"]["latrange"][0], plotdict["projection"]["latrange"][1]]
     logger.debug(f'Domain extent: {extent}')
 
-    ax.set_extent(extent, crs=ccrs.PlateCarree())
+    is_full_globe = (extent[0] <= -180 and extent[1] >= 180 and extent[2] <= -90 and extent[3] >= 90)
+    if is_full_globe:
+        ax.set_global()
+    else:
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
 
     # Create image with polycollection or raster
     if plotdict["polycollection"]:
