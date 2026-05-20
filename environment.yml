@@ -1,3 +1,4 @@
+# To regenerate conda-lock.yml after changes: mamba install -n base conda-lock && conda-lock -f environment.yml -p linux-64 -p osx-arm64 -p linux-aarch64
 name: mpas_plot
 channels:
   - conda-forge

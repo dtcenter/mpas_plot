@@ -70,15 +70,36 @@ if [ "$USE_SYSTEM_CONDA" = false ] ; then
 fi
 
 conda activate
-if ! conda env list | grep -q "^mpas_plot\s" ; then
-  echo "Creating mpas_plot environment..."
-  mamba env create -n mpas_plot --file environment.yml
+
+if [ -f "conda-lock.yml" ] ; then
+  # Ensure conda-lock is installed in the base environment
+  if ! command -v conda-lock &> /dev/null ; then
+    echo "Installing conda-lock into base environment..."
+    mamba install -y -n base conda-lock
+  fi
+  if ! conda env list | grep -q "^mpas_plot\s" ; then
+    echo "Creating mpas_plot environment from conda-lock.yml..."
+    conda-lock install --name mpas_plot conda-lock.yml
+  else
+    read -p "mpas_plot environment exists. Reinstall it from conda-lock.yml? (y/n) " -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]] ; then
+      echo "Reinstalling mpas_plot environment from conda-lock.yml..."
+      conda-lock install --name mpas_plot conda-lock.yml
+    fi
+  fi
 else
-  read -p "mpas_plot environment exists. Update it from environment.yml? (y/n) " -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]] ; then
-    echo "Updating mpas_plot environment..."
-    mamba env update -n mpas_plot --file environment.yml --prune
+  echo "No conda-lock.yml found; falling back to environment.yml"
+  if ! conda env list | grep -q "^mpas_plot\s" ; then
+    echo "Creating mpas_plot environment..."
+    mamba env create -n mpas_plot --file environment.yml
+  else
+    read -p "mpas_plot environment exists. Update it from environment.yml? (y/n) " -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]] ; then
+      echo "Updating mpas_plot environment..."
+      mamba env update -n mpas_plot --file environment.yml --prune
+    fi
   fi
 fi
 
