@@ -7,6 +7,7 @@ import logging
 import os
 import traceback
 
+import numpy as np
 import cartopy.crs as ccrs
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     #filename minus extension
     fnme=os.path.splitext(filename)[0]
 
+    # max and min values for plotted field
+    maxval=float(field.max().compute())
+    minval=float(field.min().compute())
+
     pattern_dict = {
         "var": var,
         "lev": lev,
@@ -56,7 +61,9 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
         "fnme": fnme,
         "proj": plotdict["projection"]["projection"],
         "date": "no_Time_dimension",
-        "time": "no_Time_dimension"
+        "time": "no_Time_dimension",
+        "maxval": f"{maxval:.2f}",
+        "minval": f"{minval:.2f}",
     }
     if field.attrs.get("units"):
         pattern_dict.update({
@@ -220,3 +227,67 @@ def set_map_projection(confproj) -> ccrs.Projection:
 
     raise ValueError(f"Invalid projection {proj} specified; valid options are:\n{valid}")
 
+
+def get_data_extent_raster(raster, lon_bounds=(-180, 180), lat_bounds=(-90, 90)):
+    """
+    Computes data extent from image raster for automatic zooming to data domain
+
+    Parameters
+    ----------
+    raster : np.ndarray
+        2D raster array with NaNs outside valid region
+    lon_bounds : tuple(float, float)
+        Longitude range corresponding to full raster width
+    lat_bounds : tuple(float, float)
+        Latitude range corresponding to full raster height
+
+    Returns
+    -------
+    extent : list [lon_min, lon_max, lat_min, lat_max]
+    """
+    valid = ~np.isnan(raster)
+    if not np.any(valid):
+        # no data at all
+        return lon_bounds + lat_bounds
+
+    # pixel indices of valid data
+    ys, xs = np.where(valid)
+
+    # convert indices to lon/lat using proportional scaling
+    nrows, ncols = raster.shape
+    lon_min, lon_max = lon_bounds
+    lat_min, lat_max = lat_bounds
+
+    x_min = lon_min + (xs.min() / ncols) * (lon_max - lon_min)
+    x_max = lon_min + (xs.max() / ncols) * (lon_max - lon_min)
+    y_min = lat_max - (ys.max() / nrows) * (lat_max - lat_min)
+    y_max = lat_max - (ys.min() / nrows) * (lat_max - lat_min)
+
+    pad_fraction=0.05
+    dx = (x_max - x_min) * pad_fraction
+    dy = (y_max - y_min) * pad_fraction
+    # y dimension is flipped for some reason
+    return [x_min - dx, x_max + dx, -y_max - dy, -y_min + dy]
+
+
+def get_data_extent(uxda, pad_fraction=0.05):
+    """Return (lon_min, lon_max, lat_min, lat_max) in degrees, with buffer."""
+    try:
+        if "n_face" in uxda.dims:
+            lons = getattr(uxda.uxgrid, "node_lon", None)
+            lats = getattr(uxda.uxgrid, "node_lat", None)
+        else:
+            lons = uxda.lon
+            lats = uxda.lat
+
+        lon_min = np.nanmin(lons)
+        lon_max = np.nanmax(lons)
+        lat_min = np.nanmin(lats)
+        lat_max = np.nanmax(lats)
+
+        dx = (lon_max - lon_min) * pad_fraction
+        dy = (lat_max - lat_min) * pad_fraction
+
+        return [lon_min - dx, lon_max + dx, lat_min - dy, lat_max + dy]
+    except Exception as e:
+        raise RuntimeError(f"Could not determine lat/lon bounds: {e}")

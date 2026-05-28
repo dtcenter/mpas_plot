@@ -109,6 +109,8 @@ plot:
   # {fnme} = Name of file (minus extension) being read for plotted data
   # {date} = The date of plotted data, in %Y-%m-%d format
   # {time} = The time of plotted data, in %H:%M:%S format
+  # {maxval} = The maximum value in the plotted data
+  # {minval} = The minimum value in the plotted data
 
   filename: '{var}_{lev}.png'
   format: null
@@ -116,9 +118,9 @@ plot:
     text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
     fontsize: 8
   exists: rename
-  dpi: 300
-  figheight: 4
-  figwidth: 8
+  dpi: 200
+  figheight: 3
+  figwidth: 6
 
   # colormap:
   # Color scheme to use for output plots. Options can either be standard Matplotlib colormaps (reference
@@ -130,11 +132,23 @@ plot:
   #
   colormap: "viridis"
 
+  # pixel_ratio:
+  # This controls the quantity of pixels to sample in the rasterization process; higher numbers result
+  # in higher quality plots, though at a cost of plotting speed.
+  pixel_ratio: 1
+
+  # polycollection:
+  # NOT RECOMMENDED
+  # This is the legacy plotting method that converts the unstructured grid to a set of polygons.
+  # This can be orders of magnitude slower than the default raster method and so is not
+  # recommended for large domains; if you need more detail in your plot, it's recommended to
+  # increase the "pixel_ratio" setting.
   # periodic_bdy:
-  # For periodic domains (including global), the plot routines will omit the boundary cells by default. To plot
+  # For periodic domains (including global), the polycollection routines will omit the boundary cells by default. To plot
   # all data, including boundaries, set this option to True, but note that it will slow down plotting substantially.
   #
-  periodic_bdy: False
+  polycollection: False
+  periodic_bdy: True # Set to false once UXarray issue is fixed! https://github.com/UXARRAY/uxarray/issues/1507
 
   # vmin, vmax:
   # By default the color range will be scaled to the max/min values of the plotted data. To use a custom range,
