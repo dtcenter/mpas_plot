@@ -36,7 +36,7 @@ The plotting script is built with argparse, so you can see a summary of the argu
 $ python plot_mpas_netcdf.py -h
 usage: plot_mpas_netcdf.py [-h] [-c CONFIG] [-d] [-p PROCS]
 
-Script for plotting a custom field on the native MPAS grid from native NetCDF format files
+Script for producing plot files from MPAS input and/or output in native NetCDF format
 
 options:
   -h, --help            show this help message and exit
