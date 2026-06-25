@@ -623,7 +623,7 @@ if __name__ == "__main__":
 
     scriptstart = time.time()
     parser = argparse.ArgumentParser(
-        description="Script for plotting a custom field on the native MPAS grid from native NetCDF format files"
+        description="Script for producing plot files from MPAS input and/or output in native NetCDF format"
     )
     parser.add_argument('-c', '--config', type=str, default='config_plot.yaml',
                         help='File used to specify plotting options')
