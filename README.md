@@ -26,7 +26,6 @@ shell, you must configure conda manually.
 
 ```
 source setup_conda.sh
-conda activate mpas_plot
 ```
 
 # Running the plotting script
@@ -50,6 +49,9 @@ options:
 
 The config file is where you will specify all the various options for what you want to plot, including which files, variables, levels, etc you want to plot. To setup the script to use your specific options, you’ll need to create a configuration file (`config_plot.yaml`). An example file `config_plot.yaml.example` is provided for reference, and you can view all available options in the `default_options.yaml` file.
 
+Detailed examples of configuration files, with links to staged data on NCAR HPC (Capser/Derecho), are available here:
+https://github.com/dtcenter/mpas_plot/wiki/mpas_plot-config-examples-and-use-cases
+
 Once you have modified `config_plot.yaml` with all the settings you want, simply run the script:
 
 ```
@@ -67,7 +69,7 @@ INFO     Starting plotit() for var='precipw', lev=0
 ...
 ```
 
-It may take some time to produce plots, depending on the size of your domain and number of fields plotted.
+It may take some time to produce plots, depending on the size of your domain and number of fields plotted. For large numbers of plots, using the parallel capability (`python plot_mpas_netcdf.py -p #`) is highly
 
 ## Custom colormaps
 Some custom colormaps have been set up to mimic the typical way of displaying certain data. These colormaps are specified in YAML format files in the `colormaps/` subdirectory.
