@@ -1,3 +1,14 @@
+**mpas_plot is a python utility for easy, configurable plotting of native-grid output fields of the
+[Model for Prediction Across Scales (MPAS)](https://www.mmm.ucar.edu/models/mpas), with particular emphasis
+on bulk creation of large numbers of plots, especially for HPC applications. It was developed at the
+[Developmental Testbed Center](https://dtcenter.org/who-we-are), a collaborative partnership between the
+National Oceanic and Atmospheric Administration (NOAA), US Air Force, and the
+National Science Foundation (NSF) National Center for Atmospheric Research (NCAR). It is powered by the
+[UXarray python library](https://uxarray.readthedocs.io/en/latest/), a collaborative effort between Project Raijin,
+funded by an NSF EarthCube award between NSF NCAR and The Pennsylvania State University, and the SEATS project, funded
+by the Department of Energy.**
+
+
 This README contains instructions for using `mpas_plot` utilities, including setting up the environment
 
 For detailed examples of different plotting functions, see the GitHub wiki:
