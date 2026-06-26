@@ -12,7 +12,8 @@ import multiprocessing
 import signal
 import traceback
 import time
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 
 import gc, psutil
 proc = psutil.Process(os.getpid())
@@ -453,6 +454,48 @@ def deep_merge(dict1, dict2):
     return result
 
 
+def get_timestrings(uxds: ux.UxDataset, filepath: str) -> list:
+    """
+    Returns a list of timestrings (one per Time step) in '%Y-%m-%d_%H:%M:%S' format.
+    Tries in order: xtime variable, CF Time variable, filename parsing, dummy fallback.
+    """
+    n_times = uxds.sizes.get("Time", 1)
+
+    # Method 1: xtime character array (standard MPAS history files)
+    if "xtime" in uxds:
+        return ["".join(uxds["xtime"].isel(Time=i).values.astype(str)).strip()
+                for i in range(n_times)]
+
+    # Method 2: CF-compliant Time variable with units attribute
+    if "Time" in uxds and "units" in uxds["Time"].attrs:
+        units = uxds["Time"].attrs["units"]
+        match = re.match(r'(\w+) since (\d{4}-\d{2}-\d{2}[T _]\d{2}:\d{2}:\d{2})', units)
+        if match:
+            unit_type = match.group(1).lower()
+            base_time = datetime.strptime(
+                match.group(2).replace("T", " ").replace("_", " "), "%Y-%m-%d %H:%M:%S"
+            )
+            multipliers = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400}
+            if unit_type in multipliers:
+                timestrings = []
+                for i in range(n_times):
+                    offset_secs = float(uxds["Time"].isel(Time=i).values) * multipliers[unit_type]
+                    valid_time = base_time + timedelta(seconds=offset_secs)
+                    timestrings.append(valid_time.strftime("%Y-%m-%d_%H:%M:%S"))
+                logger.info(f"Decoded time from CF Time variable with units: {units}")
+                return timestrings
+
+    # Method 3: parse time from filename (e.g. diag.2025-06-07_00.00.00.nc)
+    match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2})\.(\d{2})\.(\d{2})', os.path.basename(filepath))
+    if match:
+        timestring = f"{match.group(1)}:{match.group(2)}:{match.group(3)}"
+        logger.info(f"No time variable found; extracted time from filename: {timestring}")
+        return [timestring] * n_times
+
+    logger.warning("Could not determine valid time from file; using dummy time value")
+    return ["1900-01-01_00:00:00"] * n_times
+
+
 def setup_args(config_d: dict,uxds: ux.UxDataset):
     """
     Sets up the argument list for plotit to allow for parallelization with Python starmap
@@ -484,34 +527,17 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
         else:
             raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
 
-        # Extract time strings
-        # If multiple timesteps in a dataset, loop over times
-        if "Time" in uxds[var].dims:
-            times=[]
-            for i in range(uxds.sizes["Time"]):
-                logger.debug(f"Plotting time step {i}")
-                if "xtime" in uxds:
-                    times.append("".join(uxds["xtime"].isel(Time=i).values.astype(str)))
-                else:
-                    logger.warning(f"'xtime' variable not found in input file, using dummy time value")
-                    times.append("1900-01-01_00:00:00")
-            for lev in levels:
-                i=0
-                for timestring in times:
-                    args.append( (config_d,uxds,var,lev,i,timestring) )
-                    i+=1
+        # Extract time strings using helper that tries xtime, CF Time, filename, then dummy
+        times = get_timestrings(uxds, config_d["dataset"]["files"][0])
 
+        if "Time" in uxds[var].dims:
+            for lev in levels:
+                for i, timestring in enumerate(times):
+                    args.append( (config_d,uxds,var,lev,i,timestring) )
         else:
             logger.debug(f"{var} has no time dimension")
-            if "xtime" in uxds:
-                logger.debug("Using first xtime value in file")
-                timestring="".join(uxds["xtime"].isel(Time=0).values.astype(str))
-            else:
-                logger.warning(f"'xtime' variable not found in input file, using dummy time value")
-                timestring="1900-01-01_00:00:00"
-
             for lev in levels:
-                args.append( (config_d,uxds,var,lev,-1,timestring) )
+                args.append( (config_d,uxds,var,lev,-1,times[0]) )
 
     return args
 
