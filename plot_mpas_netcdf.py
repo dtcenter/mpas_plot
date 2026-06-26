@@ -89,16 +89,24 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
             logger.error("For MPAS this is usually a history file or an init.nc file")
         raise e
 
-    keep_set = set(vars_to_keep) | {"xtime"}  # always keep xtime
-
+    keep_set = set(vars_to_keep) | {"xtime"}  # always keep xtime if present
 
     xr_ds_list = []
-    for f in datafiles:
+    for i, f in enumerate(datafiles):
         logger.debug(f"Opening dataset file {f}\nMemory usage:{proc.memory_info().rss/1024**2} MB")
         ds = xr.open_dataset(f, decode_cf=False, chunks={})  # lazy
         missing = [v for v in vars_to_keep if v not in ds.variables]
         if missing:
             raise KeyError(f"{f} missing required variables: {missing}")
+
+        # Normalize time to xtime if not already present
+        if "xtime" not in ds.variables:
+            timestring = _extract_timestring(ds, f, i)
+            ds["xtime"] = xr.DataArray(
+                [[c for c in timestring.ljust(64)[:64]]],
+                dims=["Time", "StrLen"]
+            )
+            logger.debug(f"Synthesized xtime={timestring} for {f}")
 
         available_keep = [v for v in keep_set if v in ds.variables]
         xr_ds_list.append(ds[available_keep])
@@ -454,21 +462,16 @@ def deep_merge(dict1, dict2):
     return result
 
 
-def get_timestrings(uxds: ux.UxDataset, filepath: str) -> list:
+def _extract_timestring(ds: xr.Dataset, filepath: str, file_index: int = 0) -> str:
     """
-    Returns a list of timestrings (one per Time step) in '%Y-%m-%d_%H:%M:%S' format.
-    Tries in order: xtime variable, CF Time variable, filename parsing, dummy fallback.
+    Extract a '%Y-%m-%d_%H:%M:%S' timestring from a single raw xarray Dataset.
+    Tries: CF Time variable, filename parsing, dummy fallback.
+    Only called from open_ux_subset() when xtime is absent.
+    file_index is used to generate unique dummy timestamps when all else fails.
     """
-    n_times = uxds.sizes.get("Time", 1)
-
-    # Method 1: xtime character array (standard MPAS history files)
-    if "xtime" in uxds:
-        return ["".join(uxds["xtime"].isel(Time=i).values.astype(str)).strip()
-                for i in range(n_times)]
-
-    # Method 2: CF-compliant Time variable with units attribute
-    if "Time" in uxds and "units" in uxds["Time"].attrs:
-        units = uxds["Time"].attrs["units"]
+    # CF-compliant Time variable with units attribute
+    if "Time" in ds.variables and "units" in ds["Time"].attrs:
+        units = ds["Time"].attrs["units"]
         match = re.match(r'(\w+) since (\d{4}-\d{2}-\d{2}[T _]\d{2}:\d{2}:\d{2})', units)
         if match:
             unit_type = match.group(1).lower()
@@ -477,23 +480,21 @@ def get_timestrings(uxds: ux.UxDataset, filepath: str) -> list:
             )
             multipliers = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400}
             if unit_type in multipliers:
-                timestrings = []
-                for i in range(n_times):
-                    offset_secs = float(uxds["Time"].isel(Time=i).values) * multipliers[unit_type]
-                    valid_time = base_time + timedelta(seconds=offset_secs)
-                    timestrings.append(valid_time.strftime("%Y-%m-%d_%H:%M:%S"))
-                logger.info(f"Decoded time from CF Time variable with units: {units}")
-                return timestrings
+                offset_secs = float(ds["Time"].isel(Time=0).values) * multipliers[unit_type]
+                valid_time = base_time + timedelta(seconds=offset_secs)
+                logger.debug(f"Decoded time from CF Time variable with units: {units}")
+                return valid_time.strftime("%Y-%m-%d_%H:%M:%S")
 
-    # Method 3: parse time from filename (e.g. diag.2025-06-07_00.00.00.nc)
+    # Parse time from filename (e.g. diag.2025-06-07_00.00.00.nc)
     match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2})\.(\d{2})\.(\d{2})', os.path.basename(filepath))
     if match:
         timestring = f"{match.group(1)}:{match.group(2)}:{match.group(3)}"
         logger.info(f"No time variable found; extracted time from filename: {timestring}")
-        return [timestring] * n_times
+        return timestring
 
-    logger.warning("Could not determine valid time from file; using dummy time value")
-    return ["1900-01-01_00:00:00"] * n_times
+    dummy = datetime(1900, 1, 1) + timedelta(hours=file_index)
+    logger.warning(f"Could not determine valid time for {filepath}; using dummy time value {dummy.strftime('%Y-%m-%d_%H:%M:%S')}")
+    return dummy.strftime("%Y-%m-%d_%H:%M:%S")
 
 
 def setup_args(config_d: dict,uxds: ux.UxDataset):
@@ -527,17 +528,16 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
         else:
             raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
 
-        # Extract time strings using helper that tries xtime, CF Time, filename, then dummy
-        times = get_timestrings(uxds, config_d["dataset"]["files"][0])
-
         if "Time" in uxds[var].dims:
             for lev in levels:
-                for i, timestring in enumerate(times):
+                for i in range(uxds.sizes["Time"]):
+                    timestring = "".join(uxds["xtime"].isel(Time=i).values.astype(str)).strip()
                     args.append( (config_d,uxds,var,lev,i,timestring) )
         else:
             logger.debug(f"{var} has no time dimension")
+            timestring = "".join(uxds["xtime"].isel(Time=0).values.astype(str)).strip()
             for lev in levels:
-                args.append( (config_d,uxds,var,lev,-1,times[0]) )
+                args.append( (config_d,uxds,var,lev,-1,timestring) )
 
     return args
 
