@@ -31,7 +31,8 @@ import xarray as xr
 import uwtools.api.config as uwconfig
 import custom_functions
 
-from plot_functions import set_map_projection, set_patterns_and_outfile, get_data_extent
+from plot_functions import (set_map_projection, set_patterns_and_outfile, get_data_extent,
+                            get_colormap, finish_plot, deep_merge)
 
 
 logger = logging.getLogger(__name__)
@@ -305,35 +306,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
 
 
     # Handle color mapping
-    cmapname=plotdict["colormap"]
-    if cmapname in plt.colormaps():
-        if bins:=plotdict.get("colorbins"):
-            cmap=plt.get_cmap(cmapname, bins)
-        else:
-            cmap=mpl.colormaps[cmapname]
-    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
-        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
-        #Overwrite additional settings specified in colormap file
-        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
-        for setting in cmap_settings:
-            if setting == "colors":
-                # plot:colors is a list of color values for the custom colormap and is handled separately
-                continue
-            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
-            if isinstance(plotdict.get(setting),dict):
-                plotdict[setting]=deep_merge(plotdict[setting],cmap_settings[setting])
-            else:
-                plotdict[setting]=cmap_settings[setting]
-        if not (colorbins:=plotdict.get("colorbins")):
-            colorbins=256
-        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"],N=colorbins)
-    else:
-        raise ValueError(f"Requested color map {cmapname} is not valid")
-
-    if not plotdict["plot_over"]:
-        cmap.set_over(alpha=0)
-    if not plotdict["plot_under"]:
-        cmap.set_under(alpha=0)
+    cmap = get_colormap(plotdict)
 
 
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
@@ -408,58 +381,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
             extent=ax.get_xlim() + ax.get_ylim(),
         )
 
-    img.set_clim(vmin=plotdict["vmin"],vmax=plotdict["vmax"])
-    img.set_cmap
-
-    # Check the valid file formats supported for this figure
-    validfmts=fig.canvas.get_supported_filetypes()
-
-    # Check the valid file formats supported for this figure
-    validfmts=fig.canvas.get_supported_filetypes()
-    # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
-    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,plotdict)
-
-    logger.debug("Configuring plot title")
-    if plottitle:=plotdict["title"].get("text"):
-        plt.title(plottitle.format_map(patterns), wrap=True, fontsize=plotdict["title"]["fontsize"])
-    else:
-        logger.warning("No 'text' field for title specified, creating plot with no title")
-
-    logger.debug("Configuring plot colorbar")
-    if plotdict.get("colorbar"):
-        if plotdict.get("colorbar").get("enable"):
-            cb = plotdict["colorbar"]
-            cbar = plt.colorbar(img,ax=ax,orientation=cb["orientation"])
-            if cb.get("label"):
-                cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
-                cbar.ax.tick_params(labelsize=cb["fontsize"])
-            if dl:=cb.get("datalabels"):
-                bounds = sorted(dl.keys())
-                labels = list(dl.values()) # text labels
-                cbar.set_ticks(bounds)
-                cbar.set_ticklabels(labels)
-
-    # Make sure any subdirectories exist before we try to write the file
-    if os.path.dirname(outfile):
-        os.makedirs(os.path.dirname(outfile),exist_ok=True)
-    logger.debug(f"Saving plot {outfile}")
-    plt.savefig(outfile,format=fmt)
-    plt.close(fig)
-    logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
-
-
-def deep_merge(dict1, dict2):
-    """Update dictionary 1 with dictionary 2, including nested dictionaries."""
-    result = dict1.copy()
-    for key, value in dict2.items():
-        if key in result:
-            if isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = deep_merge(result[key], value)
-            else:
-                result[key] = value
-        else:
-            result[key] = value
-    return result
+    finish_plot(fig,ax,img,var,lev,filepath,uxda,ftime,plotdict,plotstart)
 
 
 def _extract_timestring(ds: xr.Dataset, filepath: str, file_index: int = 0) -> str:
