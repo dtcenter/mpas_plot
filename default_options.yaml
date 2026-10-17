@@ -232,6 +232,22 @@ plot:
     color: 'black'
     linewidth: 0.5
 
+  # Settings for drawing the path of a cross-section transect on a map, so that a horizontal
+  # plot can show where a vertical section through it was taken. The transects themselves are
+  # defined in the top-level cross_section:transects section (or in a variable's own
+  # cross_section: block); these settings only control whether and how they are drawn.
+  # Cross-section plots ignore this.
+  transects:
+    enable: False
+    # Which transects to draw: either "all", or a list of transect names
+    names: all
+    color: 'magenta'
+    linewidth: 1.0
+    linestyle: '-'
+    # Write the name of each transect at the point where it starts
+    label: True
+    fontsize: 6
+
   # Settings for the plot's color bar
   colorbar:
     # orientation:

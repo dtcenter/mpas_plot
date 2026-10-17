@@ -10,6 +10,7 @@ import logging
 import time
 
 import numpy as np
+import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
 import xarray as xr
 
@@ -19,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 # Mean Earth radius in km, for reporting distance along a transect
 EARTH_RADIUS_KM = 6371.229
+
+# Points used to draw a transect on a map. This only has to be enough for the line to look
+# like the great-circle arc it is; it has nothing to do with how densely the data is sampled.
+LINE_STEPS = 100
 
 XAXIS_LABELS = {
     "distance": "Distance along transect (km)",
@@ -191,6 +196,46 @@ def level_heights(zprofile, nlev):
     if nlev == zprofile.shape[1]:
         return zprofile, surface
     return None, surface
+
+
+def draw_transects(ax, settings):
+    """
+    Draw the paths of cross-section transects onto a map, so that a horizontal plot can show
+    where a vertical section through it was taken.
+
+    Args:
+        ax     (GeoAxes): The map axes to draw on
+        settings  (dict): The plot:transects settings. "paths" holds the transect geometry,
+                          which normalize_plot_blocks() resolves from the cross_section
+                          settings and puts here
+    """
+    paths = settings.get("paths") or {}
+    wanted = settings.get("names", "all")
+    if wanted != "all":
+        if isinstance(wanted, str):
+            wanted = [wanted]
+        if missing := [n for n in wanted if n not in paths]:
+            raise ValueError(f"plot:transects:names asks for {missing}, which is not defined "
+                             "in cross_section:transects")
+        paths = {n: paths[n] for n in wanted}
+
+    if not paths:
+        logger.warning("plot:transects:enable is set, but no transects are defined; put them "
+                       "in the top-level cross_section:transects")
+        return
+
+    for name, waypoints in paths.items():
+        lon, lat, _ = transect_points(waypoints, LINE_STEPS)
+        # Drawn in the geodetic frame and already densified, so the line follows the same
+        # great-circle arcs the section is sampled along, in any projection
+        ax.plot(lon, lat, transform=ccrs.Geodetic(), color=settings["color"],
+                linewidth=settings["linewidth"], linestyle=settings["linestyle"], zorder=10)
+        if settings.get("label"):
+            ax.text(lon[0], lat[0], f" {name}", transform=ccrs.PlateCarree(),
+                    color=settings["color"], fontsize=settings["fontsize"],
+                    ha="left", va="center", zorder=10)
+        logger.debug(f"Drew transect {name} from ({lat[0]:.2f}, {lon[0]:.2f}) to "
+                     f"({lat[-1]:.2f}, {lon[-1]:.2f})")
 
 
 def plot_cross_section(vardict: dict, uxda, var: str, lev, filepath: str, ftime,

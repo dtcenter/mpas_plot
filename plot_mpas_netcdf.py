@@ -30,7 +30,7 @@ import xarray as xr
 
 import uwtools.api.config as uwconfig
 import custom_functions
-from cross_section import plot_cross_section, cross_section_vars
+from cross_section import plot_cross_section, cross_section_vars, draw_transects
 
 from plot_functions import (set_map_projection, set_patterns_and_outfile, get_data_extent,
                             get_colormap, finish_plot, deep_merge, check_plot_settings)
@@ -406,6 +406,10 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
             extent=ax.get_xlim() + ax.get_ylim(),
         )
 
+    # Show where any cross-sections through this field are taken
+    if (ts:=plotdict.get("transects")) and ts.get("enable"):
+        draw_transects(ax, ts)
+
     finish_plot(fig,ax,img,var,lev,filepath,uxda,ftime,plotdict,plotstart)
 
 
@@ -491,6 +495,15 @@ def _resolve_block(config_d: dict, var: str, vardict: dict, ptype: str, block) -
                          f"  dataset:vars:{var}:cross_section:")
     check_plot_settings(plotdict, f"{where}plot:")
     plotdict["type"] = ptype
+
+    # A map can draw the paths that cross-sections through this variable are taken along,
+    # which needs the same transect geometry the cross_section block resolves. Hand it over
+    # only when it has been asked for, so that a plain map carries nothing extra.
+    if ptype != "cross_section" and plotdict.get("transects", {}).get("enable"):
+        own = vardict.get("cross_section")
+        shared = deep_merge(config_d.get("cross_section") or {},
+                            own if isinstance(own, dict) else {})
+        plotdict["transects"]["paths"] = copy.deepcopy(shared.get("transects") or {})
 
     lev = block.get("lev", vardict.get("lev"))
     return {"lev": "all" if lev is None else lev,

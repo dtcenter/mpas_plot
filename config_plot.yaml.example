@@ -34,6 +34,8 @@ dataset:
     #    plot:
     #      vmin: 260
     #      vmax: 320
+    #      transects:          # show where the section below is taken
+    #        enable: True
     #  cross_section:
     #    ymax: 12000
     #    plot:

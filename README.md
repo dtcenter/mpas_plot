@@ -142,6 +142,21 @@ A variable can add transects of its own, or change any other setting, in its `cr
 block; those are merged over the top-level ones, so a block adds to the shared transects
 rather than replacing them.
 
+To see where a section is taken, a map can draw the line along it:
+
+```yaml
+plot:
+  transects:
+    enable: True
+    names: all        # or a list of transect names
+    color: 'magenta'
+```
+
+This is a map decoration like `coastlines:` or `boundaries:`, so it lives in `plot:` and is
+ignored by the cross-section plots themselves. It draws the same great-circle path the
+section is sampled along, which also makes it obvious when a transect runs off the edge of a
+regional domain.
+
 The vertical axis is geometric height in meters whenever the layer-interface heights can be
 read, and the model level index otherwise. Those heights live in the `zgrid` variable, which
 in MPAS is normally only in `init.nc` or `static.nc` — so set `dataset:gridfile` to one of
