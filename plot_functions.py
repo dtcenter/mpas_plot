@@ -131,6 +131,32 @@ def finish_plot(fig, ax, img, var, lev, filepath, field, ftime, plotdict, plotst
     logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
 
 
+def check_plot_settings(plotdict, where):
+    """
+    Check the plot settings that would otherwise fail much later and much less clearly,
+    deep inside Matplotlib or Cartopy. Called once for the top-level plot settings and
+    once for each variable's plot-type block, since a block can override any of these.
+
+    Args:
+        plotdict (dict): The plot settings to check
+        where     (str): The config path these settings came from, for error messages
+    """
+    if isinstance(plotdict["title"],str):
+        raise TypeError(f"{where}title should be a dictionary, not a string\n"\
+                        "Adjust your config.yaml accordingly. See default_options.yaml for details.")
+
+    # Each range is checked on its own: a reversed range is a mistake whether or not the
+    # other one happens to be set, and leaving it to be caught later means it is not caught
+    # at all, since a range with a None in it is simply ignored when the extent is chosen.
+    proj=plotdict["projection"]
+    for rng in ("lonrange", "latrange"):
+        if None in proj[rng]:
+            continue
+        first,second=proj[rng]
+        if first >= second:
+            raise ValueError(f"{where}projection:{rng} first value {first} >= second value {second}")
+
+
 def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     """
     Create and return a dictionary of substituting patterns to make string substitutions easier
@@ -170,9 +196,18 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     maxval=float(field.max().compute())
     minval=float(field.min().compute())
 
+    # The plot type is recorded in the plot settings by normalize_plot_blocks(). One
+    # variable can now produce more than one kind of figure, so {ptype} is what keeps
+    # their filenames apart, and {levlabel} is what lets a single title string read
+    # correctly for both a model level and a transect.
+    ptype=plotdict.get("type","model_level")
+    levlabel=f"transect {lev}" if ptype=="cross_section" else f"level {lev}"
+
     pattern_dict = {
         "var": var,
         "lev": lev,
+        "ptype": ptype,
+        "levlabel": levlabel,
         "units": "no_Units",
         "varln": "no_long_name",
         "filename": filename,

@@ -34,22 +34,21 @@ def cross_section_vars(config_d: dict) -> set:
     requested, so that configs that do not use them read exactly the data they did before.
 
     Args:
-        config_d (dict): The full experiment configuration
+        config_d (dict): The full experiment configuration, after normalize_plot_blocks()
     Returns:
         A set of variable names
     """
     needed = set()
-    defaults = config_d["plot"]
-    for vardict in config_d["dataset"]["vars"].values():
-        # A shallow merge is enough here; this runs before setup_args() does the real
-        # deep_merge(), and all we need to know is the plot type and the vertical setting
-        plotdict = {**defaults, **(vardict.get("plot") or {})}
-        if plotdict.get("type") != "cross_section":
-            continue
-        xsdict = {**(defaults.get("cross_section") or {}),
-                  **((vardict.get("plot") or {}).get("cross_section") or {})}
-        if xsdict.get("vertical", "auto") in ("auto", "height"):
-            needed.add(xsdict.get("zvar", "zgrid"))
+    for var, vardict in config_d["dataset"]["vars"].items():
+        if "_blocks" not in vardict:
+            raise RuntimeError(f"The settings for {var} have not been resolved into plot-type "
+                               "blocks; normalize_plot_blocks() has to run before this")
+        for ptype, settings in vardict["_blocks"].items():
+            if ptype != "cross_section":
+                continue
+            xsdict = settings["cross_section"]
+            if xsdict["vertical"] in ("auto", "height"):
+                needed.add(xsdict["zvar"])
     return needed
 
 
@@ -164,6 +163,9 @@ def sample_along_transect(uxda, cells, mask=True):
     out = xr.DataArray(np.asarray(sampled.values, dtype=float), dims=dims)
     if mask:
         out = out.where(xr.DataArray(inside, dims="steps"))
+    # Rebuilding the array from its values leaves the metadata behind, and the title and
+    # colorbar are written from it -- without this the plot has no units and no long name
+    out.attrs = dict(uxda.attrs)
     return out
 
 
@@ -210,11 +212,11 @@ def plot_cross_section(vardict: dict, uxda, var: str, lev, filepath: str, ftime,
     """
     plotstart = time.time()
     plotdict = vardict["plot"]
-    xsdict = plotdict["cross_section"]
+    xsdict = vardict["cross_section"]
 
     transect = xsdict["transects"].get(lev)
     if transect is None:
-        raise ValueError(f"Transect {lev} is not defined in plot:cross_section:transects")
+        raise ValueError(f"Transect {lev} is not defined in cross_section:transects")
 
     if "n_face" not in uxda.dims:
         logger.warning(f"Variable {var} not face-centered, will interpolate to faces")
@@ -242,11 +244,12 @@ def plot_cross_section(vardict: dict, uxda, var: str, lev, filepath: str, ftime,
                              f"{nlev} levels of {var}")
         if heights is None:
             if xsdict["vertical"] == "height":
-                raise ValueError(f"plot:cross_section:vertical is 'height' but {zvar} is not "
+                raise ValueError(f"cross_section:vertical is 'height' but {zvar} is not "
                                  f"usable for {var}; it must be present in the data files or "
                                  "in dataset:gridfile, and match the variable's levels")
             logger.warning(f"Could not use {zvar} for the vertical axis of {var}; plotting "
-                           "against model level instead")
+                           "against model level instead. Set cross_section:vertical to "
+                           "'height' to make this an error rather than a fallback.")
 
     if heights is None:
         yvals = np.repeat(np.arange(nlev)[None, :], dist.size, axis=0)

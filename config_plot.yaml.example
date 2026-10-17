@@ -18,6 +18,27 @@ dataset:
       source: native
       plot:
         colormap: radar_refl
+    # One variable can be plotted more than one way. Anything directly under the variable
+    # applies to all of its blocks; anything inside a block applies to that kind of figure
+    # only. A 3-D field is needed for a cross-section, so this one is left commented out --
+    # the diag file above has none. Put {ptype} in plot:filename to keep the two kinds of
+    # figure from landing on the same name.
+    #theta:
+    #  source: native
+    #  plot:
+    #    colormap: RdBu_r
+    #  model_level:
+    #    lev:
+    #      - 0
+    #      - 30
+    #    plot:
+    #      vmin: 260
+    #      vmax: 320
+    #  cross_section:
+    #    ymax: 12000
+    #    plot:
+    #      vmin: 280
+    #      vmax: 340
 
 plot:
   # {var} = Variable name
@@ -61,30 +82,23 @@ plot:
 # ---------------------------------------------------------------------------------------
 # Vertical cross-sections
 #
-# Setting plot:type to "cross_section" plots every vertical level along a path across the
-# domain, rather than one level over the whole domain. Replace the "plot:" section above
-# with something like the following; note that this needs a gridfile containing "zgrid"
-# (usually init.nc or static.nc) for the vertical axis to be in meters.
+# Transects are usually defined here, at the top level, so that any variable with a
+# "cross_section:" block can name them. Each is a list of [latitude, longitude] waypoints
+# joined by great-circle arcs, so two waypoints give a straight section and more let it bend
+# to follow a feature. A variable can add transects of its own in its own block.
 #
-# plot:
-#   type: cross_section
-#   cross_section:
-#     transects:
-#       # A straight section, west to east across the mountains
-#       cascades:
-#         - [45.0, -124.5]
-#         - [45.0, -119.0]
-#       # Extra waypoints let a section bend to follow a feature
-#       dogleg:
-#         - [47.5, -124.0]
-#         - [46.0, -121.5]
-#         - [44.0, -121.0]
-#     steps: 200
-#     ymax: 12000        # crop to the lower troposphere
-#   filename: 'tutorial_data/{var}_{lev}_{date}_{time}.png'
-#   title:
-#     text: '{varln} along transect {lev}, {date} {time}'
-#     fontsize: 8
-#   dpi: 200
-#   figwidth: 7
-#   figheight: 3.5
+# Note that a height axis in meters needs a "gridfile" containing "zgrid" (usually init.nc or
+# static.nc); without one the vertical axis falls back to the model level index.
+
+cross_section:
+  transects:
+    # A straight section, west to east across the mountains
+    cascades:
+      - [45.0, -124.5]
+      - [45.0, -119.0]
+    # Extra waypoints let a section bend to follow a feature
+    dogleg:
+      - [47.5, -124.0]
+      - [46.0, -121.5]
+      - [44.0, -121.0]
+  steps: 200

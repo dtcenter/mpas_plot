@@ -86,37 +86,68 @@ plot_under: False
 This limits the color range to data between 5 and 75 (dBz), and `plot_under: False` specifies that data below vmin (5) should not be plotted at all; data above vmax (75) will be
 plotted if present but will have the same color value as 75.
 
-## Vertical cross-sections
+## Plot types
 
-By default each plot is a horizontal map of one vertical level. Setting `plot:type` to
-`cross_section` instead plots every vertical level along a path across the domain:
+By default a variable is plotted the way it always has been: a horizontal map of each of its
+vertical levels. To get a different kind of figure, or more than one kind from the same
+variable, give the variable a block named after the plot type. The types are `model_level`
+(the default map) and `cross_section`.
 
 ```yaml
-plot:
-  type: cross_section
-  cross_section:
-    transects:
-      cascades:
-        - [45.0, -124.5]
-        - [45.0, -119.0]
-    ymax: 12000
+dataset:
+  vars:
+    uReconstructZonal:
+      source: native
+      plot:                     # shared by every block below
+        colormap: RdBu_r
+      model_level:
+        lev: [0, 30, 54]
+        plot:
+          vmin: 0
+          vmax: 60
+      cross_section:
+        ymax: 12000
+        plot:
+          vmin: -20
+          vmax: 20
+```
+
+Inside a block, `lev` and `vertcoord` override the value given for the variable as a whole,
+`plot` overrides its plot settings, and every other key is a setting of that plot type. A
+variable with no block at all behaves exactly as it did before plot types existed.
+
+## Vertical cross-sections
+
+A cross-section plots every vertical level along a path across the domain. The paths are
+named, and are usually worth defining once at the top level so that several variables can
+share them:
+
+```yaml
+cross_section:
+  transects:
+    cascades:
+      - [45.0, -124.5]
+      - [45.0, -119.0]
 ```
 
 Each transect is a list of `[latitude, longitude]` waypoints joined by great-circle arcs, so
 two waypoints give a straight section and more waypoints let it bend to follow a feature. One
 plot is produced per transect, per variable, per time; the `{lev}` substitution is the
 transect name for these plots, so the usual filename and title settings still give each
-transect its own output file.
+transect its own output file. Use `{ptype}` in the filename to keep a variable's sections
+apart from its maps, and `{levlabel}` in a title to have it read "level 30" or "transect
+cascades" as appropriate.
 
-Transects defined in the top-level `plot:` section are available to every variable, and a
-variable can add its own under `vars:<name>:plot:cross_section:transects`.
+A variable can add transects of its own, or change any other setting, in its `cross_section:`
+block; those are merged over the top-level ones, so a block adds to the shared transects
+rather than replacing them.
 
 The vertical axis is geometric height in meters whenever the layer-interface heights can be
 read, and the model level index otherwise. Those heights live in the `zgrid` variable, which
 in MPAS is normally only in `init.nc` or `static.nc` — so set `dataset:gridfile` to one of
 those to get a height axis and a terrain silhouette. Use `vertical: height` to make a missing
 `zgrid` an error rather than silently falling back to model levels. See the `cross_section`
-block in `default_options.yaml` for the full list of settings.
+section in `default_options.yaml` for the full list of settings.
 
 Sample points that fall outside the mesh are left blank rather than filled with the nearest
 value, so a section that runs off the edge of a regional domain shows where the data stops.
