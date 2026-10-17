@@ -102,7 +102,7 @@ plot:
   # NOTE: for text fields such as filename, title, etc., some helpful variables are provided that
   # you can reference in the text string that will be substituted in the final output:
   # {var} = Variable name
-  # {lev} = Variable level
+  # {lev} = Variable level (for cross-section plots, the name of the transect)
   # {varln} = Variable "long name" (not recommended for filenames since these often contain spaces)
   # {units} = Variable units
   # {filename} = Name of file being read for plotted data
@@ -121,6 +121,83 @@ plot:
   dpi: 200
   figheight: 3
   figwidth: 6
+
+  # type:
+  # The kind of plot to produce. Valid options are:
+  #    map            A horizontal map of a single vertical level (the default)
+  #    cross_section  A vertical cross-section along one or more named transects
+  type: map
+
+  # Settings for cross-section plots. These are ignored unless "type" above is "cross_section".
+  cross_section:
+    # transects:
+    # A dictionary of named transects to plot along. Each key is the name of a transect, and
+    # each value is a list of [latitude, longitude] waypoints in degrees. Consecutive waypoints
+    # are joined by great-circle arcs, so two waypoints give a straight section and additional
+    # waypoints let the section bend to follow a feature. For example:
+    #
+    #   transects:
+    #     cascades:
+    #       - [45.0, -124.5]
+    #       - [45.0, -119.0]
+    #     dogleg:
+    #       - [47.5, -124.0]
+    #       - [46.0, -121.5]
+    #       - [44.0, -121.0]
+    #
+    # One plot is produced per transect, per variable, per time. Note that the {lev}
+    # substitution described above is the transect name for cross-section plots, so the
+    # default filename and title settings still give each transect its own output file.
+    transects: {}
+
+    # steps:
+    # The number of points sampled along the transect. For a transect with several segments
+    # these are shared out in proportion to the length of each segment. Higher values give a
+    # more detailed plot, at some cost in plotting speed.
+    steps: 200
+
+    # vertical:
+    # What to plot on the vertical axis. Valid options are:
+    #    auto    Geometric height if the height variable (see "zvar") can be read, otherwise
+    #            the model level index
+    #    height  Geometric height in meters; an error if the height variable cannot be read
+    #    level   Model vertical level index
+    vertical: auto
+
+    # zvar:
+    # The name of the variable holding the geometric height of each layer interface
+    # (dimensions nCells x nVertLevelsP1). It is read from the data files if present, and from
+    # dataset:gridfile if not; in MPAS it is normally only in the init.nc or static.nc file.
+    # Only used when "vertical" resolves to "height".
+    zvar: zgrid
+
+    # xaxis:
+    # What to plot on the horizontal axis. Valid options are:
+    #    distance  Distance along the transect, in km
+    #    lat       Latitude of each sample point
+    #    lon       Longitude of each sample point
+    xaxis: distance
+
+    # shading:
+    # How the sampled data is shaded between points; this is passed through to Matplotlib's
+    # pcolormesh. "gouraud" interpolates smoothly between sample points and is the usual look
+    # for a cross-section; "nearest" draws each sample as a flat block, which is a more
+    # literal picture of the model cells but can look blocky, and makes Matplotlib warn that
+    # terrain-following heights are not monotonic.
+    shading: gouraud
+
+    # ymin, ymax:
+    # The range of the vertical axis, in meters for "height" or in level index for "level".
+    # Leave as null to fit the range of the data. Setting ymax is the usual way to crop a
+    # section to the lower troposphere, where most of the interesting structure is.
+    ymin: null
+    ymax: null
+
+    # Settings for shading in the terrain below the cross-section. Only drawn when the
+    # vertical axis is geometric height, since model levels have no terrain to draw.
+    terrain:
+      enable: True
+      color: 'darkgrey'
 
   # colormap:
   # Color scheme to use for output plots. Options can either be standard Matplotlib colormaps (reference

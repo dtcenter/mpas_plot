@@ -30,6 +30,7 @@ import xarray as xr
 
 import uwtools.api.config as uwconfig
 import custom_functions
+from cross_section import plot_cross_section, cross_section_vars
 
 from plot_functions import (set_map_projection, set_patterns_and_outfile, get_data_extent,
                             get_colormap, finish_plot, deep_merge)
@@ -67,7 +68,7 @@ def get_vars_to_read(var_defs: dict, name: str, seen=None) -> set:
         raise ValueError(f"Unknown source type {cfg['source']} for {name}")
 
 
-def open_ux_subset(gridfile, datafiles, vars_to_keep):
+def open_ux_subset(gridfile, datafiles, vars_to_keep, optional_vars=()):
 
     if isinstance(datafiles, str):
         datafiles = [datafiles]
@@ -90,7 +91,8 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
             logger.error("For MPAS this is usually a history file or an init.nc file")
         raise e
 
-    keep_set = set(vars_to_keep) | {"xtime"}  # always keep xtime if present
+    # optional_vars are read if they are present, but are not an error if they are not
+    keep_set = set(vars_to_keep) | set(optional_vars) | {"xtime"}  # always keep xtime if present
 
     xr_ds_list = []
     for i, f in enumerate(datafiles):
@@ -113,6 +115,18 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
         xr_ds_list.append(ds[available_keep])
 
     merged = xr.concat(xr_ds_list, dim="Time", data_vars="minimal", coords="all")
+
+    # Variables such as zgrid are usually only in the static/init file, so fall back to
+    # reading them from the gridfile. This must happen before the grid is attached below,
+    # because that is what maps the nCells dimension onto the grid's n_face.
+    for v in optional_vars:
+        if v not in merged.variables:
+            griddata = xr.open_dataset(gf, decode_cf=False, chunks={})
+            if v in griddata.variables:
+                logger.debug(f"Reading {v} from gridfile {gf}")
+                merged[v] = griddata[v]
+            else:
+                logger.warning(f"Could not find {v} in the data files or in {gf}")
 
     logger.debug(f"Attaching grid to dataset; Memory usage:{proc.memory_info().rss/1024**2} MB")
     full_dataset = ux.UxDataset.from_xarray(merged, uxgrid=uxgrid)
@@ -156,7 +170,7 @@ def compute_derived(var_defs, ds, name):
 # =====================
 # Load dataset based on user settings in dataset config
 # =====================
-def load_full_dataset(dsconf):
+def load_full_dataset(dsconf, optional_vars=()):
     if isinstance(dsconf["files"],list):
         files = sorted(dsconf["files"])
     else:
@@ -177,7 +191,8 @@ def load_full_dataset(dsconf):
     if not dsconf.get("gridfile"):
         dsconf["gridfile"]=""
     # 2. Open UxDataset lazily
-    ds = open_ux_subset(dsconf["gridfile"], dsconf["files"], list(readvars))
+    ds = open_ux_subset(dsconf["gridfile"], dsconf["files"], list(readvars),
+                        optional_vars=optional_vars)
 
     logger.debug(f"Compute derived variables\nMemory usage:{proc.memory_info().rss/1024**2} MB")
     # 3. Compute derived variables and add to ds
@@ -214,15 +229,21 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
         plotfield=field
     else:
         plotfield=field.isel(Time=timeint)
+    plottype = config_d['dataset']['vars'][var]['plot'].get("type","map")
+    plotfunc = PLOT_FUNCTIONS.get(plottype)
+    if plotfunc is None:
+        raise ValueError(f"Unknown plot type: {plottype}\n\nValid options are {list(PLOT_FUNCTIONS)}")
     try:
-        plotit(config_d['dataset']['vars'][var],plotfield,var,lev,config_d['dataset']['files'][0],ftime_dt)
+        plotfunc(config_d['dataset']['vars'][var],plotfield,var,lev,
+                 config_d['dataset']['files'][0],ftime_dt,uxds=uxds)
     except Exception as e:
         logger.error(f'Could not plot variable {var}, level {lev}')
         logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
                       f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
         raise PlotError(traceback.format_exc()) from None
 
-def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
+def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime,
+           uxds: ux.UxDataset=None) -> None:
     """
     The main program that makes the plot(s)
     Args:
@@ -230,6 +251,8 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted and grid information
         filepath      (str): The filename of the input data that was read into the ux objects
         ftime    (datetime): The forecast valid time as a datetime object
+        uxds (ux.UxDataset): The full dataset, for plot types that need other variables;
+                             unused here, but part of the shared plot-type signature
 
     Returns:
         None
@@ -384,6 +407,15 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
     finish_plot(fig,ax,img,var,lev,filepath,uxda,ftime,plotdict,plotstart)
 
 
+# =====================
+# The available plot types, selected by the plot:type setting
+# =====================
+PLOT_FUNCTIONS = {
+    "map": plotit,
+    "cross_section": plot_cross_section,
+}
+
+
 def _extract_timestring(ds: xr.Dataset, filepath: str, file_index: int = 0) -> str:
     """
     Extract a '%Y-%m-%d_%H:%M:%S' timestring from a single raw xarray Dataset.
@@ -437,7 +469,14 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
         if vardict.get("lev") is None:
             vardict["lev"]="all"
         vardict["vertcoord"]=vardict.get("vertcoord","nVertLevels")
-        if vardict["lev"] in [ ["all"], "all" ]:
+        # Cross-sections fan out over named transects rather than vertical levels. The
+        # transect name travels in the "lev" slot, so that the {lev} substitution still
+        # gives each transect its own output file without any further plumbing.
+        if vardict["plot"].get("type") == "cross_section":
+            levels = list(vardict["plot"]["cross_section"]["transects"])
+            if not levels:
+                raise ValueError(f"No plot:cross_section:transects defined for variable {var}")
+        elif vardict["lev"] in [ ["all"], "all" ]:
             if vardict["vertcoord"] in uxds[var].dims:
                 levels = range(0,len(uxds[var][vardict["vertcoord"]]))
             else:
@@ -592,7 +631,8 @@ if __name__ == "__main__":
     # Load all data to plot as a single dataset
     logger.info('Loading data from netcdf files')
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
-    dataset=load_full_dataset(expt_config["dataset"])
+    dataset=load_full_dataset(expt_config["dataset"],
+                              optional_vars=cross_section_vars(expt_config))
 
     logger.debug(f'{dataset=}')
 

@@ -57,3 +57,34 @@ plot:
   figwidth: 5
   projection:
     projection: PlateCarree
+
+# ---------------------------------------------------------------------------------------
+# Vertical cross-sections
+#
+# Setting plot:type to "cross_section" plots every vertical level along a path across the
+# domain, rather than one level over the whole domain. Replace the "plot:" section above
+# with something like the following; note that this needs a gridfile containing "zgrid"
+# (usually init.nc or static.nc) for the vertical axis to be in meters.
+#
+# plot:
+#   type: cross_section
+#   cross_section:
+#     transects:
+#       # A straight section, west to east across the mountains
+#       cascades:
+#         - [45.0, -124.5]
+#         - [45.0, -119.0]
+#       # Extra waypoints let a section bend to follow a feature
+#       dogleg:
+#         - [47.5, -124.0]
+#         - [46.0, -121.5]
+#         - [44.0, -121.0]
+#     steps: 200
+#     ymax: 12000        # crop to the lower troposphere
+#   filename: 'tutorial_data/{var}_{lev}_{date}_{time}.png'
+#   title:
+#     text: '{varln} along transect {lev}, {date} {time}'
+#     fontsize: 8
+#   dpi: 200
+#   figwidth: 7
+#   figheight: 3.5

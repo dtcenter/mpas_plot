@@ -86,6 +86,41 @@ plot_under: False
 This limits the color range to data between 5 and 75 (dBz), and `plot_under: False` specifies that data below vmin (5) should not be plotted at all; data above vmax (75) will be
 plotted if present but will have the same color value as 75.
 
+## Vertical cross-sections
+
+By default each plot is a horizontal map of one vertical level. Setting `plot:type` to
+`cross_section` instead plots every vertical level along a path across the domain:
+
+```yaml
+plot:
+  type: cross_section
+  cross_section:
+    transects:
+      cascades:
+        - [45.0, -124.5]
+        - [45.0, -119.0]
+    ymax: 12000
+```
+
+Each transect is a list of `[latitude, longitude]` waypoints joined by great-circle arcs, so
+two waypoints give a straight section and more waypoints let it bend to follow a feature. One
+plot is produced per transect, per variable, per time; the `{lev}` substitution is the
+transect name for these plots, so the usual filename and title settings still give each
+transect its own output file.
+
+Transects defined in the top-level `plot:` section are available to every variable, and a
+variable can add its own under `vars:<name>:plot:cross_section:transects`.
+
+The vertical axis is geometric height in meters whenever the layer-interface heights can be
+read, and the model level index otherwise. Those heights live in the `zgrid` variable, which
+in MPAS is normally only in `init.nc` or `static.nc` — so set `dataset:gridfile` to one of
+those to get a height axis and a terrain silhouette. Use `vertical: height` to make a missing
+`zgrid` an error rather than silently falling back to model levels. See the `cross_section`
+block in `default_options.yaml` for the full list of settings.
+
+Sample points that fall outside the mesh are left blank rather than filled with the nearest
+value, so a section that runs off the edge of a regional domain shows where the data stops.
+
 ## Limitations
 
 This plotting utility has no funding for technical support, and has several known limitations:
