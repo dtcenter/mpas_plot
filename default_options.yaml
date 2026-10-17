@@ -364,11 +364,18 @@ cross_section:
 
   # shading:
   # How the sampled data is shaded between points; this is passed through to Matplotlib's
-  # pcolormesh. "gouraud" interpolates smoothly between sample points and is the usual look
-  # for a cross-section; "nearest" draws each sample as a flat block, which is a more
-  # literal picture of the model cells but can look blocky, and makes Matplotlib warn that
-  # terrain-following heights are not monotonic.
-  shading: gouraud
+  # pcolormesh. Valid options are:
+  #    flat     Each value fills exactly one model cell by one model level, using the layer
+  #             interfaces from "zvar" as the cell edges. This is the most literal picture
+  #             of the data, and the default
+  #    gouraud  Interpolates smoothly between sample points. This is the conventional look
+  #             for a cross-section, but Matplotlib draws each quadrilateral as two shaded
+  #             triangles, which shows up as a triangular texture wherever a cell is only a
+  #             few pixels wide -- usually in the thick levels aloft
+  #    nearest  Like flat, but with the cell edges inferred from the sample points instead
+  #             of taken from the model; Matplotlib warns that terrain-following heights are
+  #             not monotonic when it does this
+  shading: flat
 
   # ymin, ymax:
   # The range of the vertical axis, in meters for "height" or in level index for "level".

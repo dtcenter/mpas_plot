@@ -188,6 +188,13 @@ section in `default_options.yaml` for the full list of settings.
 Sample points that fall outside the mesh are left blank rather than filled with the nearest
 value, so a section that runs off the edge of a regional domain shows where the data stops.
 
+By default each value is drawn filling exactly one model cell by one model level, with the
+layer interfaces from `zgrid` used as the cell edges. Set `shading: gouraud` for the smoother
+conventional look, bearing in mind that Matplotlib draws every quadrilateral as two shaded
+triangles, which shows up as a triangular texture wherever a cell is only a few pixels wide.
+MPAS levels thicken by a factor of twenty or so between the surface and 20 km, so that is
+usually where it appears.
+
 ## Limitations
 
 This plotting utility has no funding for technical support, and has several known limitations:

@@ -215,15 +215,44 @@ def level_heights(zprofile, nlev):
         zprofile (array): Interface heights along the transect, shape (steps, nVertLevelsP1)
         nlev       (int): Number of vertical levels in the field being plotted
     Returns:
-        A tuple (heights, surface); heights is None if the field's vertical coordinate does
-        not correspond to these interfaces
+        A tuple (centres, edges, surface). centres positions each value and edges bounds it,
+        with one more entry per column than centres; both are None if the field's vertical
+        coordinate does not correspond to these interfaces
     """
     surface = zprofile[:, 0]
     if nlev == zprofile.shape[1] - 1:
-        return 0.5 * (zprofile[:, :-1] + zprofile[:, 1:]), surface
+        # A field on layer mid-points: the interfaces are exactly the cell edges
+        return 0.5 * (zprofile[:, :-1] + zprofile[:, 1:]), zprofile, surface
     if nlev == zprofile.shape[1]:
-        return zprofile, surface
-    return None, surface
+        # A field on the interfaces themselves, so its cells straddle them and are bounded
+        # by the mid-points, with half a layer added on at the top and bottom
+        mid = 0.5 * (zprofile[:, :-1] + zprofile[:, 1:])
+        edges = np.hstack([(1.5 * zprofile[:, :1] - 0.5 * zprofile[:, 1:2]), mid,
+                           (1.5 * zprofile[:, -1:] - 0.5 * zprofile[:, -2:-1])])
+        return zprofile, edges, surface
+    return None, None, surface
+
+
+def _corners_1d(centres):
+    """Cell centres -> the n+1 edges bounding them, halving the end intervals."""
+    centres = np.asarray(centres, dtype=float)
+    return np.concatenate([[1.5 * centres[0] - 0.5 * centres[1]],
+                           0.5 * (centres[:-1] + centres[1:]),
+                           [1.5 * centres[-1] - 0.5 * centres[-2]]])
+
+
+def _corners_2d(edges):
+    """
+    Vertical cell edges sampled at each point along the transect, shape (steps, n), moved
+    sideways onto the corners between those points, shape (steps+1, n).
+
+    Matplotlib needs the four corners of every quad. The vertical edges come straight from
+    the model's own layer interfaces; this is the other half of that, and it is the step
+    that lets pcolormesh draw true rectangles instead of inferring edges from centres.
+    """
+    return np.vstack([1.5 * edges[:1] - 0.5 * edges[1:2],
+                      0.5 * (edges[:-1] + edges[1:]),
+                      1.5 * edges[-1:] - 0.5 * edges[-2:-1]])
 
 
 def draw_transects(ax, settings):
@@ -298,12 +327,12 @@ def plot_cross_section(vardict: dict, uxda, var: str, lev, filepath: str, ftime,
     nlev = data.sizes[vertcoord]
 
     # Vertical axis: geometric height where we can get it, model level otherwise
-    heights, surface = None, None
+    heights, vedges, surface = None, None, None
     if xsdict["vertical"] in ("auto", "height"):
         zvar = xsdict["zvar"]
         if uxds is not None and zvar in uxds.variables:
             zprofile = sample_along_transect(uxds[zvar], cells, mask=False).values
-            heights, surface = level_heights(zprofile, nlev)
+            heights, vedges, surface = level_heights(zprofile, nlev)
             if heights is None:
                 logger.debug(f"{zvar} has {zprofile.shape[1]} interfaces, which does not match "
                              f"{nlev} levels of {var}")
@@ -318,21 +347,34 @@ def plot_cross_section(vardict: dict, uxda, var: str, lev, filepath: str, ftime,
 
     if heights is None:
         yvals = np.repeat(np.arange(nlev)[None, :], dist.size, axis=0)
+        vedges = np.repeat((np.arange(nlev + 1) - 0.5)[None, :], dist.size, axis=0)
         ylabel = "Model level"
     else:
         yvals = heights
         ylabel = "Height (m)"
 
-    xcoord = {"distance": dist, "lat": lat, "lon": lon}[xsdict["xaxis"]]
-    xvals = np.repeat(np.asarray(xcoord)[:, None], nlev, axis=1)
+    xcoord = np.asarray({"distance": dist, "lat": lat, "lon": lon}[xsdict["xaxis"]])
+
+    shading = xsdict["shading"]
+    if shading not in ("flat", "nearest", "gouraud"):
+        raise ValueError(f"cross_section:shading is {shading!r}; it must be one of flat, "
+                         "nearest or gouraud")
+    if shading == "flat":
+        # Hand pcolormesh the corners of every quad rather than the centres. The vertical
+        # ones are the model's own layer interfaces, so each quad drawn is exactly one model
+        # cell by one model level -- no edges inferred, and nothing interpolated across the
+        # diagonal of a quad the way gouraud shading does.
+        xvals = np.repeat(_corners_1d(xcoord)[:, None], nlev + 1, axis=1)
+        yvals = _corners_2d(vedges)
+    else:
+        xvals = np.repeat(xcoord[:, None], nlev, axis=1)
 
     cmap = get_colormap(plotdict)
     fig, ax = plt.subplots(1, 1, figsize=(plotdict["figwidth"], plotdict["figheight"]),
                            dpi=plotdict["dpi"], constrained_layout=True)
     # A 2-D vertical coordinate lets the terrain-following levels be drawn as they actually
     # are, with no interpolation onto a regular height grid
-    img = ax.pcolormesh(xvals, yvals, data.values, cmap=cmap,
-                        shading=xsdict["shading"])
+    img = ax.pcolormesh(xvals, yvals, data.values, cmap=cmap, shading=shading)
 
     ax.set_xlabel(XAXIS_LABELS[xsdict["xaxis"]], fontsize=plotdict["title"]["fontsize"])
     ax.set_ylabel(ylabel, fontsize=plotdict["title"]["fontsize"])
