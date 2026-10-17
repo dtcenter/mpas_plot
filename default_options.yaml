@@ -313,6 +313,27 @@ cross_section:
   # default filename and title settings still give each transect its own output file.
   transects: {}
 
+  # names:
+  # Which of the transects above a variable should be plotted along: either "all", or a list
+  # of transect names. Transects are defined once, here, and each variable picks the ones it
+  # wants rather than repeating the geometry:
+  #
+  #   cross_section:
+  #     transects:
+  #       boulder: [[40.0, -107.0], [40.0, -104.0]]
+  #       dillon:  [[39.63, -107.0], [39.63, -104.0]]
+  #
+  #   dataset:
+  #     vars:
+  #       uReconstructZonal:
+  #         source: native
+  #         cross_section:          # every transect
+  #       w:
+  #         source: native
+  #         cross_section:
+  #           names: [boulder]      # just this one
+  names: all
+
   # steps:
   # The number of points sampled along the transect. For a transect with several segments
   # these are shared out in proportion to the length of each segment. Higher values give a

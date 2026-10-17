@@ -57,6 +57,34 @@ def cross_section_vars(config_d: dict) -> set:
     return needed
 
 
+def select_transects(defined, wanted, where):
+    """
+    Work out which transects a set of settings asks for, in the order it asks for them.
+
+    Transects are defined once by name, normally in the top-level cross_section:transects,
+    and anything that uses them picks the ones it wants by name rather than repeating the
+    geometry.
+
+    Args:
+        defined (dict): The transects available, as name -> waypoints
+        wanted        : "all", a single name, or a list of names
+        where    (str): The config path doing the asking, for error messages
+    Returns:
+        A dict of name -> waypoints, holding only the transects asked for
+    """
+    defined = defined or {}
+    if wanted == "all":
+        return dict(defined)
+    if isinstance(wanted, str):
+        wanted = [wanted]
+    if not wanted:
+        raise ValueError(f"{where}:names is empty; leave it unset to use every transect")
+    if missing := [n for n in wanted if n not in defined]:
+        raise ValueError(f"{where}:names asks for {missing}, which is not defined in "
+                         f"cross_section:transects (defined: {sorted(defined)})")
+    return {n: defined[n] for n in wanted}
+
+
 def transect_points(waypoints, steps):
     """
     Converts a list of [latitude, longitude] waypoints into evenly spaced sample points along
@@ -209,16 +237,8 @@ def draw_transects(ax, settings):
                           which normalize_plot_blocks() resolves from the cross_section
                           settings and puts here
     """
-    paths = settings.get("paths") or {}
-    wanted = settings.get("names", "all")
-    if wanted != "all":
-        if isinstance(wanted, str):
-            wanted = [wanted]
-        if missing := [n for n in wanted if n not in paths]:
-            raise ValueError(f"plot:transects:names asks for {missing}, which is not defined "
-                             "in cross_section:transects")
-        paths = {n: paths[n] for n in wanted}
-
+    paths = select_transects(settings.get("paths"), settings.get("names", "all"),
+                             "plot:transects")
     if not paths:
         logger.warning("plot:transects:enable is set, but no transects are defined; put them "
                        "in the top-level cross_section:transects")

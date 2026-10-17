@@ -30,7 +30,8 @@ import xarray as xr
 
 import uwtools.api.config as uwconfig
 import custom_functions
-from cross_section import plot_cross_section, cross_section_vars, draw_transects
+from cross_section import (plot_cross_section, cross_section_vars, draw_transects,
+                           select_transects)
 
 from plot_functions import (set_map_projection, set_patterns_and_outfile, get_data_extent,
                             get_colormap, finish_plot, deep_merge, check_plot_settings)
@@ -553,6 +554,21 @@ def normalize_plot_blocks(config_d: dict) -> None:
             vardict["_blocks"][ptype] = _resolve_block(config_d, var, vardict, ptype, block)
             logger.debug(f"{var} {ptype} settings: {vardict['_blocks'][ptype]}")
 
+    # Defining transects and then never using them is almost always a mistake: the variables
+    # fall back to a map of every model level, which on a large domain is a great many
+    # figures nobody asked for, and nothing else would say a word about it.
+    if defined := (config_d.get("cross_section") or {}).get("transects"):
+        used = any(ptype == "cross_section" or b["plot"].get("transects", {}).get("enable")
+                   for v in config_d["dataset"]["vars"].values()
+                   for ptype, b in v["_blocks"].items())
+        if not used:
+            logger.warning(f"cross_section:transects defines {sorted(defined)}, but no "
+                           "variable asks for a cross-section or draws them on a map, so "
+                           "none of them will be used.")
+            logger.warning("Add an empty cross_section: block to each variable you want "
+                           "sectioned; without one a variable is plotted as a map of every "
+                           "model level.")
+
 
 def _extract_timestring(ds: xr.Dataset, filepath: str, file_index: int = 0) -> str:
     """
@@ -604,11 +620,13 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
                 # The transect name travels in the "lev" slot, so that the {lev}
                 # substitution still gives each transect its own output file without any
                 # further plumbing.
-                levels = list(settings["cross_section"]["transects"])
+                xs = settings["cross_section"]
+                levels = list(select_transects(xs.get("transects"), xs.get("names", "all"),
+                                               f"dataset:vars:{var}:cross_section"))
                 if not levels:
-                    raise ValueError(f"No transects defined for variable {var}; set them "
-                                     f"under dataset:vars:{var}:cross_section:transects, or "
-                                     "in the top-level cross_section:transects to share them")
+                    raise ValueError(f"No transects defined for variable {var}; set them in "
+                                     "the top-level cross_section:transects, and pick which "
+                                     f"of them to use with dataset:vars:{var}:cross_section:names")
             elif settings["lev"] in [ ["all"], "all" ]:
                 if settings["vertcoord"] in uxds[var].dims:
                     levels = range(0,len(uxds[var][settings["vertcoord"]]))

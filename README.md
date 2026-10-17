@@ -113,8 +113,12 @@ dataset:
 ```
 
 Inside a block, `lev` and `vertcoord` override the value given for the variable as a whole,
-`plot` overrides its plot settings, and every other key is a setting of that plot type. A
-variable with no block at all behaves exactly as it did before plot types existed.
+`plot` overrides its plot settings, and every other key is a setting of that plot type.
+
+Only the kinds of figure a variable asks for are produced: giving it a `cross_section:` block
+and nothing else gets sections and no maps, and both together need both blocks. A variable
+with no block at all is plotted as a map of every level, exactly as it was before plot types
+existed, so configs written before this still run unchanged.
 
 ## Vertical cross-sections
 
@@ -131,16 +135,33 @@ cross_section:
 ```
 
 Each transect is a list of `[latitude, longitude]` waypoints joined by great-circle arcs, so
-two waypoints give a straight section and more waypoints let it bend to follow a feature. One
-plot is produced per transect, per variable, per time; the `{lev}` substitution is the
+two waypoints give a straight section and more waypoints let it bend to follow a feature.
+
+Defining a transect does not by itself plot anything. A variable asks to be sectioned by
+carrying a `cross_section:` block, and an empty one means "all the transects defined above":
+
+```yaml
+dataset:
+  vars:
+    uReconstructZonal:
+      source: native
+      cross_section:              # every transect
+    w:
+      source: native
+      cross_section:
+        names: [cascades]         # just this one
+```
+
+So the geometry is written once and each variable picks the transects it wants by name. A
+variable can still define transects of its own, or change any other cross-section setting,
+in its own block; those are merged over the top-level ones, and `names` then selects from
+the result.
+
+One plot is produced per transect, per variable, per time; the `{lev}` substitution is the
 transect name for these plots, so the usual filename and title settings still give each
 transect its own output file. Use `{ptype}` in the filename to keep a variable's sections
 apart from its maps, and `{levlabel}` in a title to have it read "level 30" or "transect
 cascades" as appropriate.
-
-A variable can add transects of its own, or change any other setting, in its `cross_section:`
-block; those are merged over the top-level ones, so a block adds to the shared transects
-rather than replacing them.
 
 To see where a section is taken, a map can draw the line along it:
 
