@@ -280,9 +280,12 @@ def draw_transects(ax, settings):
 
     for name, waypoints in paths.items():
         lon, lat, _ = transect_points(waypoints, LINE_STEPS)
-        # Drawn in the geodetic frame and already densified, so the line follows the same
-        # great-circle arcs the section is sampled along, in any projection
-        ax.plot(lon, lat, transform=ccrs.Geodetic(), color=settings["color"],
+        # transect_points() has already densified the path along its great-circle arcs, so
+        # these are plain spherical lat/lon that need no further interpolation and the line
+        # follows the sampled path in any projection. It must be drawn as PlateCarree:
+        # ccrs.Geodetic() is an ellipsoidal CRS, and handing it these coordinates makes
+        # cartopy apply a datum conversion that moves the whole line up to 25 km in latitude.
+        ax.plot(lon, lat, transform=ccrs.PlateCarree(), color=settings["color"],
                 linewidth=settings["linewidth"], linestyle=settings["linestyle"], zorder=10)
         if settings.get("label"):
             ax.text(lon[0], lat[0], f" {name}", transform=ccrs.PlateCarree(),
