@@ -408,7 +408,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         )
 
     # Show where any cross-sections through this field are taken
-    if (ts:=plotdict.get("transects")) and ts.get("enable"):
+    if (ts:=plotdict.get("transects")) and ts.get("names") is not None:
         draw_transects(ax, ts)
 
     finish_plot(fig,ax,img,var,lev,filepath,uxda,ftime,plotdict,plotstart)
@@ -500,11 +500,17 @@ def _resolve_block(config_d: dict, var: str, vardict: dict, ptype: str, block) -
     # A map can draw the paths that cross-sections through this variable are taken along,
     # which needs the same transect geometry the cross_section block resolves. Hand it over
     # only when it has been asked for, so that a plain map carries nothing extra.
-    if ptype != "cross_section" and plotdict.get("transects", {}).get("enable"):
+    if ptype != "cross_section" and plotdict.get("transects", {}).get("names") is not None:
         own = vardict.get("cross_section")
         shared = deep_merge(config_d.get("cross_section") or {},
                             own if isinstance(own, dict) else {})
         plotdict["transects"]["paths"] = copy.deepcopy(shared.get("transects") or {})
+        # Check the names here rather than letting the plotting worker do it, so that a
+        # misspelled one is caught before any figure is written
+        select_transects(plotdict["transects"]["paths"], plotdict["transects"]["names"],
+                         f"{where}plot:transects",
+                         empty_hint='use "all" to draw every transect, or remove the '
+                                    "setting to draw none")
 
     lev = block.get("lev", vardict.get("lev"))
     return {"lev": "all" if lev is None else lev,
@@ -558,7 +564,8 @@ def normalize_plot_blocks(config_d: dict) -> None:
     # fall back to a map of every model level, which on a large domain is a great many
     # figures nobody asked for, and nothing else would say a word about it.
     if defined := (config_d.get("cross_section") or {}).get("transects"):
-        used = any(ptype == "cross_section" or b["plot"].get("transects", {}).get("enable")
+        used = any(ptype == "cross_section"
+                   or b["plot"].get("transects", {}).get("names") is not None
                    for v in config_d["dataset"]["vars"].values()
                    for ptype, b in v["_blocks"].items())
         if not used:

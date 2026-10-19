@@ -235,12 +235,31 @@ plot:
   # Settings for drawing the path of a cross-section transect on a map, so that a horizontal
   # plot can show where a vertical section through it was taken. The transects themselves are
   # defined in the top-level cross_section:transects section (or in a variable's own
-  # cross_section: block); these settings only control whether and how they are drawn.
+  # cross_section: block); these settings only control which of them are drawn, and how.
   # Cross-section plots ignore this.
   transects:
-    enable: False
-    # Which transects to draw: either "all", or a list of transect names
-    names: all
+    # names:
+    # Which transects to draw, named the same way a variable picks the ones it is sectioned
+    # along: a list of transect names, a single name, or "all" for every transect defined.
+    # Unset, as it is here, means draw none, so a map carries no transect lines unless it
+    # asks for them. For example:
+    #
+    #   dataset:
+    #     vars:
+    #       theta:
+    #         source: native
+    #         model_level:
+    #           plot:
+    #             transects:
+    #               names: [cascades]
+    #         cross_section:
+    #           names: [cascades]
+    #
+    # Note that this is a separate setting from cross_section:names: this one picks the lines
+    # a map draws, that one picks the transects a variable is sectioned along. They are
+    # usually the same list, but nothing requires it -- a map can show every transect in the
+    # domain while the variable is sectioned along only one of them.
+    names: null
     color: 'magenta'
     linewidth: 1.0
     linestyle: '-'

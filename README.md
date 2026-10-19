@@ -163,20 +163,34 @@ transect its own output file. Use `{ptype}` in the filename to keep a variable's
 apart from its maps, and `{levlabel}` in a title to have it read "level 30" or "transect
 cascades" as appropriate.
 
-To see where a section is taken, a map can draw the line along it:
+To see where a section is taken, a map can draw the line along it. Which lines a map draws is
+named the same way a variable picks the transects it is sectioned along:
 
 ```yaml
-plot:
-  transects:
-    enable: True
-    names: all        # or a list of transect names
-    color: 'magenta'
+dataset:
+  vars:
+    theta:
+      source: native
+      model_level:
+        plot:
+          transects:
+            names: [cascades]     # or "all", or a single name
+            color: 'magenta'
+      cross_section:
+        names: [cascades]
 ```
 
 This is a map decoration like `coastlines:` or `boundaries:`, so it lives in `plot:` and is
 ignored by the cross-section plots themselves. It draws the same great-circle path the
 section is sampled along, which also makes it obvious when a transect runs off the edge of a
 regional domain.
+
+Leaving `names:` unset draws nothing, so a map carries no transect lines unless it asks for
+them. The two `names:` settings are deliberately independent: `plot:transects:names` picks
+the lines a map draws, `cross_section:names` picks the transects the variable is sectioned
+along. They are usually the same list, but a map can show every transect in the domain while
+the variable is sectioned along only one of them. Set `plot:transects:names` at the top level
+to draw the same lines on every map.
 
 The vertical axis is geometric height in meters whenever the layer-interface heights can be
 read, and the model level index otherwise. Those heights live in the `zgrid` variable, which

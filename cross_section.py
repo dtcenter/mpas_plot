@@ -57,7 +57,8 @@ def cross_section_vars(config_d: dict) -> set:
     return needed
 
 
-def select_transects(defined, wanted, where):
+def select_transects(defined, wanted, where, empty_hint="leave it unset to use every "
+                     "transect"):
     """
     Work out which transects a set of settings asks for, in the order it asks for them.
 
@@ -69,6 +70,9 @@ def select_transects(defined, wanted, where):
         defined (dict): The transects available, as name -> waypoints
         wanted        : "all", a single name, or a list of names
         where    (str): The config path doing the asking, for error messages
+        empty_hint(str): What to suggest when the list is empty, which differs by caller
+                         because leaving "names" unset does not mean the same thing to all
+                         of them
     Returns:
         A dict of name -> waypoints, holding only the transects asked for
     """
@@ -78,7 +82,7 @@ def select_transects(defined, wanted, where):
     if isinstance(wanted, str):
         wanted = [wanted]
     if not wanted:
-        raise ValueError(f"{where}:names is empty; leave it unset to use every transect")
+        raise ValueError(f"{where}:names is empty; {empty_hint}")
     if missing := [n for n in wanted if n not in defined]:
         raise ValueError(f"{where}:names asks for {missing}, which is not defined in "
                          f"cross_section:transects (defined: {sorted(defined)})")
@@ -262,15 +266,16 @@ def draw_transects(ax, settings):
 
     Args:
         ax     (GeoAxes): The map axes to draw on
-        settings  (dict): The plot:transects settings. "paths" holds the transect geometry,
-                          which normalize_plot_blocks() resolves from the cross_section
-                          settings and puts here
+        settings  (dict): The plot:transects settings. "names" picks which transects to
+                          draw; "paths" holds the geometry, which normalize_plot_blocks()
+                          resolves from the cross_section settings and puts here
     """
-    paths = select_transects(settings.get("paths"), settings.get("names", "all"),
-                             "plot:transects")
+    paths = select_transects(settings.get("paths"), settings["names"], "plot:transects",
+                             empty_hint='use "all" to draw every transect, or remove the '
+                                        "setting to draw none")
     if not paths:
-        logger.warning("plot:transects:enable is set, but no transects are defined; put them "
-                       "in the top-level cross_section:transects")
+        logger.warning("plot:transects:names asks for transects, but none are defined; put "
+                       "them in the top-level cross_section:transects")
         return
 
     for name, waypoints in paths.items():

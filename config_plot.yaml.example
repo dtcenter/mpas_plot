@@ -35,7 +35,7 @@ dataset:
     #      vmin: 260
     #      vmax: 320
     #      transects:          # show where the section below is taken
-    #        enable: True
+    #        names: [cascades]
     #  cross_section:
     #    names: [cascades]    # omit to section along every transect defined below
     #    ymax: 12000
