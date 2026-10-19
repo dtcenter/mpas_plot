@@ -166,6 +166,12 @@ plot:
   #
   colormap: "viridis"
 
+  # colorbins:
+  # The number of discrete color steps in the colormap. Left unset, a standard Matplotlib
+  # colormap keeps its own resolution and a custom colormap from colormaps/<name>.yaml is
+  # built with 256. Set it to band the colors instead of shading them continuously.
+  colorbins: null
+
   # pixel_ratio:
   # This controls the quantity of pixels to sample in the rasterization process; higher numbers result
   # in higher quality plots, though at a cost of plotting speed.
@@ -304,6 +310,40 @@ plot:
     standard_parallels:
       - null
       - null
+
+# ---------------------------------------------------------------------------------------
+# Settings for model-level plots, shared by every variable plotted as one.
+#
+# This is the plot type a variable gets when it has no plot-type block at all, so these
+# settings apply to most configs without anything being written under dataset:vars. See the
+# comments above dataset:vars for the full structure.
+#
+# Note that the settings controlling how a map looks -- projection:, coastlines:,
+# boundaries:, lakes:, edges:, pixel_ratio, polycollection, periodic_bdy and transects: --
+# all live under plot: rather than here. They describe drawing a horizontal map of the mesh
+# rather than anything about model levels, so any future map-like plot type shares them.
+model_level:
+  # lev:
+  # Which vertical levels to plot, for every variable that does not choose its own: "all",
+  # a single level index, or a list of them. A variable overrides this with its own lev:,
+  # and a model_level: block overrides that, so a common set of levels can be written once
+  # here and varied only where it differs. For example:
+  #
+  #   model_level:
+  #     lev: [0, 10, 20]
+  #
+  #   dataset:
+  #     vars:
+  #       divergence:
+  #         source: native            # levels 0, 10 and 20
+  #       w:
+  #         source: native
+  #         vertcoord: nVertLevelsP1
+  #         lev: [0, 55]              # just these two
+  #
+  # Note that vertcoord: is NOT a model_level setting: cross-sections need it too, so it
+  # stays a property of the variable rather than of one kind of figure.
+  lev: all
 
 # ---------------------------------------------------------------------------------------
 # Settings for cross-section plots, shared by every variable that asks for one.

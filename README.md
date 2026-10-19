@@ -115,6 +115,21 @@ dataset:
 Inside a block, `lev` and `vertcoord` override the value given for the variable as a whole,
 `plot` overrides its plot settings, and every other key is a setting of that plot type.
 
+A plot type's settings can also be given once at the top level, in a section named after
+it, so that every variable picks them up. For model levels that is `lev`, which saves
+repeating the same list of levels under every variable:
+
+```yaml
+model_level:
+  lev: [0, 10, 20]      # unless a variable says otherwise
+```
+
+Levels are taken from the block if it sets them, otherwise from the variable, otherwise
+from `model_level:lev`, which defaults to `all`. Note that the settings controlling how a
+map looks — `projection:`, `coastlines:`, `edges:`, `pixel_ratio` and the rest — stay in
+`plot:` rather than moving here, since they describe drawing a map of the mesh rather than
+anything about model levels.
+
 Only the kinds of figure a variable asks for are produced: giving it a `cross_section:` block
 and nothing else gets sections and no maps, and both together need both blocks. A variable
 with no block at all is plotted as a map of every level, exactly as it was before plot types

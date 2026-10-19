@@ -512,11 +512,24 @@ def _resolve_block(config_d: dict, var: str, vardict: dict, ptype: str, block) -
                          empty_hint='use "all" to draw every transect, or remove the '
                                     "setting to draw none")
 
-    lev = block.get("lev", vardict.get("lev"))
-    return {"lev": "all" if lev is None else lev,
+    # The block first, then the variable, then the plot type's own defaults. A level written
+    # with no value falls through to the next source rather than meaning "all", so that
+    # clearing it in one place does not silently discard the set above it.
+    for source in (block, vardict, defaults):
+        if (lev := source.get("lev")) is not None:
+            break
+    else:
+        lev = "all"
+
+    # lev is resolved above and returned on its own. Leaving the raw default in here as
+    # well would give one value two homes, only one of which anything reads.
+    typesettings = copy.deepcopy(deep_merge(defaults, body))
+    typesettings.pop("lev", None)
+
+    return {"lev": lev,
             "vertcoord": block.get("vertcoord", vardict.get("vertcoord", "nVertLevels")),
             "plot": plotdict,
-            ptype: copy.deepcopy(deep_merge(defaults, body))}
+            ptype: typesettings}
 
 
 def normalize_plot_blocks(config_d: dict) -> None:
