@@ -201,7 +201,7 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     # their filenames apart, and {levlabel} is what lets a single title string read
     # correctly for both a model level and a transect.
     ptype=plotdict.get("type","model_level")
-    levlabel=f"transect {lev}" if ptype=="cross_section" else f"level {lev}"
+    levlabel=f"{lev} cross-section" if ptype=="cross_section" else f"level {lev}"
 
     pattern_dict = {
         "var": var,
