@@ -36,9 +36,9 @@ dataset:
   # list. If no 'lev' is provided, all levels will be plotted. Some specific examples of how to
   # specify various combinations of variable and levels are provided below:
 
-  # To plot the variable t2m at the 9th vertical level, use the following settings:
+  # To plot the variable theta at the 9th vertical level, use the following settings:
   #   vars:
-  #     t2m:
+  #     theta:
   #       source: native
   #       lev:
   #         - 9
@@ -50,9 +50,9 @@ dataset:
   #     rho:
   #       source: native
   #
-  # To plot the variable t2m at levels 1-6, and vorticity at all levels, use the following settings:
+  # To plot the variable theta at levels 1-6, and vorticity at all levels, use the following settings:
   #   vars:
-  #     t2m:
+  #     theta:
   #       source: native
   #       lev:
   #         - 1
