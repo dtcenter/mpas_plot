@@ -156,15 +156,6 @@ def check_plot_settings(plotdict, where):
         if first >= second:
             raise ValueError(f"{where}projection:{rng} first value {first} >= second value {second}")
 
-    # transects: used to be switched on with enable:, and is now switched on by naming the
-    # transects to draw. Left unchecked, a leftover enable: would draw nothing and say
-    # nothing, which is the one failure this setting cannot afford.
-    if "enable" in (plotdict.get("transects") or {}):
-        raise ValueError(f"{where}transects:enable is no longer a setting; list the transects "
-                         f"to draw instead, e.g.\n"
-                         f"  {where}transects:\n"
-                         f"    names: all")
-
 
 def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     """
