@@ -12,6 +12,7 @@ import time
 import numpy as np
 import cartopy.crs as ccrs
 import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
 import xarray as xr
 
 from plot_functions import get_colormap, finish_plot
@@ -288,9 +289,13 @@ def draw_transects(ax, settings):
         ax.plot(lon, lat, transform=ccrs.PlateCarree(), color=settings["color"],
                 linewidth=settings["linewidth"], linestyle=settings["linestyle"], zorder=10)
         if settings.get("label"):
-            ax.text(lon[0], lat[0], f" {name}", transform=ccrs.PlateCarree(),
-                    color=settings["color"], fontsize=settings["fontsize"],
-                    ha="left", va="center", zorder=10)
+            # Nudged a few points clear of the line in display space rather than placed at
+            # the start point itself: centred on it, the label of a roughly east-west
+            # transect is struck through by its own line.
+            textpos = mtransforms.offset_copy(ccrs.PlateCarree()._as_mpl_transform(ax),
+                                              fig=ax.figure, units="points", x=4, y=4)
+            ax.text(lon[0], lat[0], name, transform=textpos, color=settings["color"],
+                    fontsize=settings["fontsize"], ha="left", va="bottom", zorder=10)
         logger.debug(f"Drew transect {name} from ({lat[0]:.2f}, {lon[0]:.2f}) to "
                      f"({lat[-1]:.2f}, {lon[-1]:.2f})")
 
