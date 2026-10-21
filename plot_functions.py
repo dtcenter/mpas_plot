@@ -5,12 +5,156 @@ Module for various plotting functions
 import inspect
 import logging
 import os
+import time
 import traceback
 
 import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 
+import uwtools.api.config as uwconfig
+
 logger = logging.getLogger(__name__)
+
+
+def deep_merge(dict1, dict2):
+    """Update dictionary 1 with dictionary 2, including nested dictionaries."""
+    result = dict1.copy()
+    for key, value in dict2.items():
+        if key in result:
+            if isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = deep_merge(result[key], value)
+            else:
+                result[key] = value
+        else:
+            result[key] = value
+    return result
+
+
+def get_colormap(plotdict):
+    """
+    Resolve the plot:colormap setting into a Matplotlib colormap object.
+
+    The name may be either a standard Matplotlib colormap or the name of a custom colormap
+    file under colormaps/; custom colormap files may also override other plot settings, so
+    plotdict is updated in place.
+
+    Args:
+        plotdict (dict): The plot settings for the variable being plotted; modified in place
+    Returns:
+        A Matplotlib colormap object
+    """
+    cmapname=plotdict["colormap"]
+    if cmapname in plt.colormaps():
+        if bins:=plotdict.get("colorbins"):
+            cmap=plt.get_cmap(cmapname, bins)
+        else:
+            cmap=mpl.colormaps[cmapname]
+    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
+        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
+        #Overwrite additional settings specified in colormap file
+        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
+        for setting in cmap_settings:
+            if setting == "colors":
+                # plot:colors is a list of color values for the custom colormap and is handled separately
+                continue
+            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
+            if isinstance(plotdict.get(setting),dict):
+                plotdict[setting]=deep_merge(plotdict[setting],cmap_settings[setting])
+            else:
+                plotdict[setting]=cmap_settings[setting]
+        if not (colorbins:=plotdict.get("colorbins")):
+            colorbins=256
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"],N=colorbins)
+    else:
+        raise ValueError(f"Requested color map {cmapname} is not valid")
+
+    if not plotdict["plot_over"]:
+        cmap.set_over(alpha=0)
+    if not plotdict["plot_under"]:
+        cmap.set_under(alpha=0)
+
+    return cmap
+
+
+def finish_plot(fig, ax, img, var, lev, filepath, field, ftime, plotdict, plotstart):
+    """
+    Apply the color limits, title, and colorbar settings shared by all plot types, then write
+    the figure to disk and close it.
+
+    Args:
+        fig    (Figure): The figure to write
+        ax       (Axes): The axes the data was plotted on
+        img (ScalarMappable): The object returned by the plotting call, for clim and colorbar
+        var       (str): Name of the variable being plotted
+        lev  (int | str): Vertical level, or the transect name for cross-section plots
+        filepath  (str): The filename of the input data that was read into the ux objects
+        field (ux.UxDataArray): The field being plotted, for the {maxval}/{minval} patterns
+        ftime (datetime): The forecast valid time
+        plotdict (dict): The plot settings for the variable being plotted
+        plotstart (float): time.time() when plotting began, for the timing log message
+    """
+    img.set_clim(vmin=plotdict["vmin"],vmax=plotdict["vmax"])
+
+    # Check the valid file formats supported for this figure
+    validfmts=fig.canvas.get_supported_filetypes()
+    # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
+    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,field,ftime,plotdict)
+
+    logger.debug("Configuring plot title")
+    if plottitle:=plotdict["title"].get("text"):
+        ax.set_title(plottitle.format_map(patterns), wrap=True, fontsize=plotdict["title"]["fontsize"])
+    else:
+        logger.warning("No 'text' field for title specified, creating plot with no title")
+
+    logger.debug("Configuring plot colorbar")
+    if plotdict.get("colorbar"):
+        if plotdict.get("colorbar").get("enable"):
+            cb = plotdict["colorbar"]
+            cbar = fig.colorbar(img,ax=ax,orientation=cb["orientation"])
+            if cb.get("label"):
+                cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
+                cbar.ax.tick_params(labelsize=cb["fontsize"])
+            if dl:=cb.get("datalabels"):
+                bounds = sorted(dl.keys())
+                labels = list(dl.values()) # text labels
+                cbar.set_ticks(bounds)
+                cbar.set_ticklabels(labels)
+
+    # Make sure any subdirectories exist before we try to write the file
+    if os.path.dirname(outfile):
+        os.makedirs(os.path.dirname(outfile),exist_ok=True)
+    logger.debug(f"Saving plot {outfile}")
+    fig.savefig(outfile,format=fmt)
+    plt.close(fig)
+    logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
+
+
+def check_plot_settings(plotdict, where):
+    """
+    Check the plot settings that would otherwise fail much later and much less clearly,
+    deep inside Matplotlib or Cartopy. Called once for the top-level plot settings and
+    once for each variable's plot-type block, since a block can override any of these.
+
+    Args:
+        plotdict (dict): The plot settings to check
+        where     (str): The config path these settings came from, for error messages
+    """
+    if isinstance(plotdict["title"],str):
+        raise TypeError(f"{where}title should be a dictionary, not a string\n"\
+                        "Adjust your config.yaml accordingly. See default_options.yaml for details.")
+
+    # Each range is checked on its own: a reversed range is a mistake whether or not the
+    # other one happens to be set, and leaving it to be caught later means it is not caught
+    # at all, since a range with a None in it is simply ignored when the extent is chosen.
+    proj=plotdict["projection"]
+    for rng in ("lonrange", "latrange"):
+        if None in proj[rng]:
+            continue
+        first,second=proj[rng]
+        if first >= second:
+            raise ValueError(f"{where}projection:{rng} first value {first} >= second value {second}")
 
 
 def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
@@ -52,9 +196,18 @@ def set_patterns_and_outfile(valid, var, lev, filepath, field, ftime, plotdict):
     maxval=float(field.max().compute())
     minval=float(field.min().compute())
 
+    # The plot type is recorded in the plot settings by normalize_plot_blocks(). One
+    # variable can now produce more than one kind of figure, so {ptype} is what keeps
+    # their filenames apart, and {levlabel} is what lets a single title string read
+    # correctly for both a model level and a transect.
+    ptype=plotdict.get("type","model_level")
+    levlabel=f"{lev} cross-section" if ptype=="cross_section" else f"level {lev}"
+
     pattern_dict = {
         "var": var,
         "lev": lev,
+        "ptype": ptype,
+        "levlabel": levlabel,
         "units": "no_Units",
         "varln": "no_long_name",
         "filename": filename,

@@ -30,8 +30,11 @@ import xarray as xr
 
 import uwtools.api.config as uwconfig
 import custom_functions
+from cross_section import (plot_cross_section, cross_section_vars, draw_transects,
+                           select_transects)
 
-from plot_functions import set_map_projection, set_patterns_and_outfile, get_data_extent
+from plot_functions import (set_map_projection, set_patterns_and_outfile, get_data_extent,
+                            get_colormap, finish_plot, deep_merge, check_plot_settings)
 
 
 logger = logging.getLogger(__name__)
@@ -66,7 +69,7 @@ def get_vars_to_read(var_defs: dict, name: str, seen=None) -> set:
         raise ValueError(f"Unknown source type {cfg['source']} for {name}")
 
 
-def open_ux_subset(gridfile, datafiles, vars_to_keep):
+def open_ux_subset(gridfile, datafiles, vars_to_keep, optional_vars=()):
 
     if isinstance(datafiles, str):
         datafiles = [datafiles]
@@ -89,7 +92,8 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
             logger.error("For MPAS this is usually a history file or an init.nc file")
         raise e
 
-    keep_set = set(vars_to_keep) | {"xtime"}  # always keep xtime if present
+    # optional_vars are read if they are present, but are not an error if they are not
+    keep_set = set(vars_to_keep) | set(optional_vars) | {"xtime"}  # always keep xtime if present
 
     xr_ds_list = []
     for i, f in enumerate(datafiles):
@@ -112,6 +116,18 @@ def open_ux_subset(gridfile, datafiles, vars_to_keep):
         xr_ds_list.append(ds[available_keep])
 
     merged = xr.concat(xr_ds_list, dim="Time", data_vars="minimal", coords="all")
+
+    # Variables such as zgrid are usually only in the static/init file, so fall back to
+    # reading them from the gridfile. This must happen before the grid is attached below,
+    # because that is what maps the nCells dimension onto the grid's n_face.
+    for v in optional_vars:
+        if v not in merged.variables:
+            griddata = xr.open_dataset(gf, decode_cf=False, chunks={})
+            if v in griddata.variables:
+                logger.debug(f"Reading {v} from gridfile {gf}")
+                merged[v] = griddata[v]
+            else:
+                logger.warning(f"Could not find {v} in the data files or in {gf}")
 
     logger.debug(f"Attaching grid to dataset; Memory usage:{proc.memory_info().rss/1024**2} MB")
     full_dataset = ux.UxDataset.from_xarray(merged, uxgrid=uxgrid)
@@ -155,7 +171,7 @@ def compute_derived(var_defs, ds, name):
 # =====================
 # Load dataset based on user settings in dataset config
 # =====================
-def load_full_dataset(dsconf):
+def load_full_dataset(dsconf, optional_vars=()):
     if isinstance(dsconf["files"],list):
         files = sorted(dsconf["files"])
     else:
@@ -176,7 +192,8 @@ def load_full_dataset(dsconf):
     if not dsconf.get("gridfile"):
         dsconf["gridfile"]=""
     # 2. Open UxDataset lazily
-    ds = open_ux_subset(dsconf["gridfile"], dsconf["files"], list(readvars))
+    ds = open_ux_subset(dsconf["gridfile"], dsconf["files"], list(readvars),
+                        optional_vars=optional_vars)
 
     logger.debug(f"Compute derived variables\nMemory usage:{proc.memory_info().rss/1024**2} MB")
     # 3. Compute derived variables and add to ds
@@ -187,16 +204,22 @@ def load_full_dataset(dsconf):
     return ds
 
 
-def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: int, timestring: str) -> None:
+def plotithandler(vardict: dict,uxds: ux.UxDataset,var: str,lev,timeint: int,
+                  timestring: str,filepath: str) -> None:
     """
-    A wrapper for plotit() that handles errors for Python multiprocessing, as well as preprocessing the
-    UxDataSet into a UxDataArray with just the variable and timestep we want to plot
+    A wrapper for the plotting functions that handles errors for Python multiprocessing, as
+    well as preprocessing the UxDataSet into a UxDataArray with just the variable and
+    timestep we want to plot.
+
+    vardict is one variable's settings for one kind of figure, as resolved by
+    normalize_plot_blocks(); which plotting function to call follows from it.
     """
 
     # Since this is a spawn process, we need to re-initialize logging
     logger = logging.getLogger(__name__)
 
-    logger.info(f"Starting plotit() for {var=}, {lev=}")
+    plottype = vardict["plot"]["type"]
+    logger.info(f"Starting {plottype} plot for {var=}, {lev=}")
 
     if var not in list(uxds.data_vars.keys()):
         msg = f"{var=} is not a valid variable\n\n(you never should have made it this far though)\n\n{uxds.data_vars}"
@@ -213,15 +236,17 @@ def plotithandler(config_d: dict,uxds: ux.UxDataset,var: str,lev: int,timeint: i
         plotfield=field
     else:
         plotfield=field.isel(Time=timeint)
+
     try:
-        plotit(config_d['dataset']['vars'][var],plotfield,var,lev,config_d['dataset']['files'][0],ftime_dt)
+        PLOT_FUNCTIONS[plottype](vardict,plotfield,var,lev,filepath,ftime_dt,uxds=uxds)
     except Exception as e:
-        logger.error(f'Could not plot variable {var}, level {lev}')
-        logger.debug(f"Arguments to plotit():\n{config_d['dataset']['vars'][var]=}\n{plotfield=}\n"\
-                      f"{var=}\n{lev=}\n{config_d['dataset']['files'][0]=}\n{ftime_dt=}")
+        logger.error(f'Could not plot variable {var}, {lev=} as a {plottype}')
+        logger.debug(f"Arguments to {plottype}:\n{vardict=}\n{plotfield=}\n"\
+                      f"{var=}\n{lev=}\n{filepath=}\n{ftime_dt=}")
         raise PlotError(traceback.format_exc()) from None
 
-def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime) -> None:
+def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ftime,
+           uxds: ux.UxDataset=None) -> None:
     """
     The main program that makes the plot(s)
     Args:
@@ -229,6 +254,8 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
         uxds (ux.UxDataArray): A ux.UxDataArray object containing the data to be plotted and grid information
         filepath      (str): The filename of the input data that was read into the ux objects
         ftime    (datetime): The forecast valid time as a datetime object
+        uxds (ux.UxDataset): The full dataset, for plot types that need other variables;
+                             unused here, but part of the shared plot-type signature
 
     Returns:
         None
@@ -305,35 +332,7 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
 
 
     # Handle color mapping
-    cmapname=plotdict["colormap"]
-    if cmapname in plt.colormaps():
-        if bins:=plotdict.get("colorbins"):
-            cmap=plt.get_cmap(cmapname, bins)
-        else:
-            cmap=mpl.colormaps[cmapname]
-    elif os.path.exists(colorfile:=f"colormaps/{cmapname}.yaml"):
-        cmap_settings = uwconfig.get_yaml_config(config=colorfile)
-        #Overwrite additional settings specified in colormap file
-        logger.info(f"Color map {cmapname} selected; using custom settings from {colorfile}")
-        for setting in cmap_settings:
-            if setting == "colors":
-                # plot:colors is a list of color values for the custom colormap and is handled separately
-                continue
-            logger.debug(f"Overwriting config {setting} with custom value {cmap_settings[setting]} from {colorfile}")
-            if isinstance(plotdict.get(setting),dict):
-                plotdict[setting]=deep_merge(plotdict[setting],cmap_settings[setting])
-            else:
-                plotdict[setting]=cmap_settings[setting]
-        if not (colorbins:=plotdict.get("colorbins")):
-            colorbins=256
-        cmap = mpl.colors.LinearSegmentedColormap.from_list(name="custom",colors=cmap_settings["colors"],N=colorbins)
-    else:
-        raise ValueError(f"Requested color map {cmapname} is not valid")
-
-    if not plotdict["plot_over"]:
-        cmap.set_over(alpha=0)
-    if not plotdict["plot_under"]:
-        cmap.set_under(alpha=0)
+    cmap = get_colormap(plotdict)
 
 
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
@@ -408,58 +407,187 @@ def plotit(vardict: dict,uxda: ux.UxDataArray,var: str,lev: int,filepath: str,ft
             extent=ax.get_xlim() + ax.get_ylim(),
         )
 
-    img.set_clim(vmin=plotdict["vmin"],vmax=plotdict["vmax"])
-    img.set_cmap
+    # Show where any cross-sections through this field are taken
+    if (ts:=plotdict.get("transects")) and ts.get("names") is not None:
+        draw_transects(ax, ts)
 
-    # Check the valid file formats supported for this figure
-    validfmts=fig.canvas.get_supported_filetypes()
-
-    # Check the valid file formats supported for this figure
-    validfmts=fig.canvas.get_supported_filetypes()
-    # Create a dict of substitutable patterns to make string substitutions easier, and determine output filename
-    patterns,outfile,fmt = set_patterns_and_outfile(validfmts,var,lev,filepath,uxda,ftime,plotdict)
-
-    logger.debug("Configuring plot title")
-    if plottitle:=plotdict["title"].get("text"):
-        plt.title(plottitle.format_map(patterns), wrap=True, fontsize=plotdict["title"]["fontsize"])
-    else:
-        logger.warning("No 'text' field for title specified, creating plot with no title")
-
-    logger.debug("Configuring plot colorbar")
-    if plotdict.get("colorbar"):
-        if plotdict.get("colorbar").get("enable"):
-            cb = plotdict["colorbar"]
-            cbar = plt.colorbar(img,ax=ax,orientation=cb["orientation"])
-            if cb.get("label"):
-                cbar.set_label(cb["label"].format_map(patterns), fontsize=cb["fontsize"])
-                cbar.ax.tick_params(labelsize=cb["fontsize"])
-            if dl:=cb.get("datalabels"):
-                bounds = sorted(dl.keys())
-                labels = list(dl.values()) # text labels
-                cbar.set_ticks(bounds)
-                cbar.set_ticklabels(labels)
-
-    # Make sure any subdirectories exist before we try to write the file
-    if os.path.dirname(outfile):
-        os.makedirs(os.path.dirname(outfile),exist_ok=True)
-    logger.debug(f"Saving plot {outfile}")
-    plt.savefig(outfile,format=fmt)
-    plt.close(fig)
-    logger.info(f"Done saving plot {outfile}. Plot generation {time.time()-plotstart} seconds")
+    finish_plot(fig,ax,img,var,lev,filepath,uxda,ftime,plotdict,plotstart)
 
 
-def deep_merge(dict1, dict2):
-    """Update dictionary 1 with dictionary 2, including nested dictionaries."""
-    result = dict1.copy()
-    for key, value in dict2.items():
-        if key in result:
-            if isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = deep_merge(result[key], value)
-            else:
-                result[key] = value
+# =====================
+# The available plot types. A variable asks for one by carrying a block of that name; see
+# normalize_plot_blocks() below.
+# =====================
+PLOT_FUNCTIONS = {
+    "model_level": plotit,
+    "cross_section": plot_cross_section,
+}
+
+# Plot types that select one vertical level per figure, and so fan out over "lev"
+LEVEL_TYPES = {"model_level"}
+
+# Keys that may appear directly under a variable, all of which are inherited by every one of
+# its plot-type blocks. Anything else there must name a plot type, or it is a mistake: unlike
+# the other settings in the config file, an unrecognized key under a variable changes which
+# figures get produced, so it is worth refusing outright rather than ignoring.
+VAR_KEYS = {"source", "inputs", "function", "attrs", "lev", "vertcoord", "plot"}
+
+assert not VAR_KEYS & set(PLOT_FUNCTIONS), "a plot type may not share a name with a variable setting"
+
+
+def _resolve_block(config_d: dict, var: str, vardict: dict, ptype: str, block) -> dict:
+    """
+    Merge one plot-type block into a complete settings dictionary for that figure.
+
+    Two separate chains of settings arrive here. The appearance of the figure comes from
+    "plot", which is merged from the top level, then the variable, then the block. The
+    settings of the plot type itself come from the top-level section named after it, then
+    from the body of the block.
+
+    Args:
+        config_d (dict): The full experiment configuration
+        var       (str): Name of the variable being resolved, for error messages
+        vardict  (dict): That variable's settings
+        ptype     (str): The plot type this block is for
+        block          : The contents of the block, as written in the config file
+    Returns:
+        A settings dictionary with "lev", "vertcoord", "plot" and the plot type's own
+        settings, which is what gets handed to the plotting function
+    """
+    where = f"dataset:vars:{var}:{ptype}:"
+
+    # "cross_section:" with nothing under it means this kind of plot with every setting
+    # taken from the top level, which is a reasonable thing to want to write
+    if block is None:
+        block = {}
+    if not isinstance(block, dict):
+        raise TypeError(f"{where[:-1]} should be a dictionary of settings for the {ptype} "
+                        f"plot type, not {type(block).__name__}")
+
+    defaults = config_d.get(ptype) or {}
+    body = {k: v for k, v in block.items() if k not in ("lev", "vertcoord", "plot")}
+    if unknown := sorted(set(body) - set(defaults)):
+        msg = f"Unknown {ptype} setting(s) {unknown} in {where}\n"
+        if defaults:
+            msg += f"Valid {ptype} settings are {sorted(defaults)}\n"
         else:
-            result[key] = value
-    return result
+            msg += f"The {ptype} plot type has no settings of its own\n"
+        raise ValueError(msg + f"Settings controlling the appearance of the figure go under "
+                               f"{where}plot:")
+    if "lev" in block and ptype not in LEVEL_TYPES:
+        raise ValueError(f"{where}lev has no meaning for a {ptype} plot, which plots every "
+                         "vertical level")
+
+    plotdict = deep_merge(config_d["plot"], vardict.get("plot") or {})
+    plotdict = deep_merge(plotdict, block.get("plot") or {})
+    # deep_merge only copies the dictionaries it recurses into, so anything the merge did
+    # not have to look at is still shared with the config it came from -- including lists
+    # such as projection:latrange, which set_map_projection() clamps in place. One copy of
+    # the finished dictionary keeps each block's settings its own.
+    plotdict = copy.deepcopy(plotdict)
+
+    if stray := sorted(set(plotdict) & set(PLOT_FUNCTIONS)):
+        raise ValueError(f"{stray} found under a plot: section. Settings for a plot type "
+                         f"belong in the top-level section of that name, or in the variable's "
+                         f"own block: dataset:vars:{var}:{stray[0]}:")
+    if "type" in plotdict:
+        raise ValueError("plot:type is no longer a setting. The kind of figure is chosen by "
+                         f"giving the variable a block named after a plot type, e.g.\n"
+                         f"  dataset:vars:{var}:cross_section:")
+    check_plot_settings(plotdict, f"{where}plot:")
+    plotdict["type"] = ptype
+
+    # A map can draw the paths that cross-sections through this variable are taken along,
+    # which needs the same transect geometry the cross_section block resolves. Hand it over
+    # only when it has been asked for, so that a plain map carries nothing extra.
+    if ptype != "cross_section" and plotdict.get("transects", {}).get("names") is not None:
+        own = vardict.get("cross_section")
+        shared = deep_merge(config_d.get("cross_section") or {},
+                            own if isinstance(own, dict) else {})
+        plotdict["transects"]["paths"] = copy.deepcopy(shared.get("transects") or {})
+        # Check the names here rather than letting the plotting worker do it, so that a
+        # misspelled one is caught before any figure is written
+        select_transects(plotdict["transects"]["paths"], plotdict["transects"]["names"],
+                         f"{where}plot:transects",
+                         empty_hint='use "all" to draw every transect, or remove the '
+                                    "setting to draw none")
+
+    # The block first, then the variable, then the plot type's own defaults. A level written
+    # with no value falls through to the next source rather than meaning "all", so that
+    # clearing it in one place does not silently discard the set above it.
+    for source in (block, vardict, defaults):
+        if (lev := source.get("lev")) is not None:
+            break
+    else:
+        lev = "all"
+
+    # lev is resolved above and returned on its own. Leaving the raw default in here as
+    # well would give one value two homes, only one of which anything reads.
+    typesettings = copy.deepcopy(deep_merge(defaults, body))
+    typesettings.pop("lev", None)
+
+    return {"lev": lev,
+            "vertcoord": block.get("vertcoord", vardict.get("vertcoord", "nVertLevels")),
+            "plot": plotdict,
+            ptype: typesettings}
+
+
+def normalize_plot_blocks(config_d: dict) -> None:
+    """
+    Resolve every variable into one complete settings dictionary per kind of figure.
+
+    A variable may carry a block named after each plot type it should be plotted as, and
+    whatever is written directly under the variable is inherited by all of them. A variable
+    with no block at all produces a single horizontal map per level, which is how every
+    variable behaved before cross-sections existed.
+
+    The result is stored as vardict["_blocks"]. This runs here rather than in setup_args()
+    because cross_section_vars() needs it to decide what to read out of the data files, and
+    that happens first.
+
+    Args:
+        config_d (dict): The full experiment configuration; modified in place
+    """
+    if not config_d["dataset"].get("vars"):
+        raise ValueError("No variables to plot; set dataset:vars in your config file")
+
+    for var, vardict in config_d["dataset"]["vars"].items():
+        if not isinstance(vardict, dict) or not vardict:
+            raise ValueError(f"No settings given for variable {var}; at minimum it needs\n"
+                             f"  {var}:\n    source: native")
+        if "source" not in vardict:
+            raise ValueError(f"Variable {var} has no source: setting")
+        if unknown := sorted(set(vardict) - VAR_KEYS - set(PLOT_FUNCTIONS)):
+            raise ValueError(f"Unknown setting(s) {unknown} for variable {var}\n"
+                             f"Valid settings are {sorted(VAR_KEYS)}, or the name of a plot "
+                             f"type {sorted(PLOT_FUNCTIONS)} to plot it that way as well")
+
+        # Blocks are taken in the order they were written, so that the plots come out in the
+        # order the config file reads
+        blocks = {k: v for k, v in vardict.items() if k in PLOT_FUNCTIONS}
+        if not blocks:
+            blocks = {"model_level": {}}
+
+        vardict["_blocks"] = {}
+        for ptype, block in blocks.items():
+            vardict["_blocks"][ptype] = _resolve_block(config_d, var, vardict, ptype, block)
+            logger.debug(f"{var} {ptype} settings: {vardict['_blocks'][ptype]}")
+
+    # Defining transects and then never using them is almost always a mistake: the variables
+    # fall back to a map of every model level, which on a large domain is a great many
+    # figures nobody asked for, and nothing else would say a word about it.
+    if defined := (config_d.get("cross_section") or {}).get("transects"):
+        used = any(ptype == "cross_section"
+                   or b["plot"].get("transects", {}).get("names") is not None
+                   for v in config_d["dataset"]["vars"].values()
+                   for ptype, b in v["_blocks"].items())
+        if not used:
+            logger.warning(f"cross_section:transects defines {sorted(defined)}, but no "
+                           "variable asks for a cross-section or draws them on a map, so "
+                           "none of them will be used.")
+            logger.warning("Add an empty cross_section: block to each variable you want "
+                           "sectioned; without one a variable is plotted as a map of every "
+                           "model level.")
 
 
 def _extract_timestring(ds: xr.Dataset, filepath: str, file_index: int = 0) -> str:
@@ -502,42 +630,56 @@ def setup_args(config_d: dict,uxds: ux.UxDataset):
     Sets up the argument list for plotit to allow for parallelization with Python starmap
     """
     args = []
+    filepath = config_d["dataset"]["files"][0]
 
-    for var in config_d["dataset"]["vars"]:
-        # Update each variable's plot settings dictionary
-        plotdict=copy.copy(config_d["plot"])
-        if update_dict:=config_d["dataset"]["vars"][var].get("plot"):
-            plotdict=deep_merge(plotdict,update_dict)
-        config_d["dataset"]["vars"][var]["plot"]=plotdict
-
-        vardict=config_d["dataset"]["vars"][var]
-        # Plot all levels by default
-        if vardict.get("lev") is None:
-            vardict["lev"]="all"
-        vardict["vertcoord"]=vardict.get("vertcoord","nVertLevels")
-        if vardict["lev"] in [ ["all"], "all" ]:
-            if vardict["vertcoord"] in uxds[var].dims:
-                levels = range(0,len(uxds[var][vardict["vertcoord"]]))
+    for var, vardict in config_d["dataset"]["vars"].items():
+        seen = {}
+        for ptype, settings in vardict["_blocks"].items():
+            if ptype == "cross_section":
+                # Cross-sections fan out over named transects rather than vertical levels.
+                # The transect name travels in the "lev" slot, so that the {lev}
+                # substitution still gives each transect its own output file without any
+                # further plumbing.
+                xs = settings["cross_section"]
+                levels = list(select_transects(xs.get("transects"), xs.get("names", "all"),
+                                               f"dataset:vars:{var}:cross_section"))
+                if not levels:
+                    raise ValueError(f"No transects defined for variable {var}; set them in "
+                                     "the top-level cross_section:transects, and pick which "
+                                     f"of them to use with dataset:vars:{var}:cross_section:names")
+            elif settings["lev"] in [ ["all"], "all" ]:
+                if settings["vertcoord"] in uxds[var].dims:
+                    levels = range(0,len(uxds[var][settings["vertcoord"]]))
+                else:
+                    logger.debug(f"{var} has no vertical coordinate, plotting only level")
+                    levels = [0]
+            elif isinstance(settings["lev"], list):
+                levels = settings["lev"]
+            elif isinstance(settings["lev"], int):
+                levels = [settings["lev"]]
             else:
-                logger.debug(f"{var} has no vertical coordinate, plotting only level")
-                levels = [0]
-        elif isinstance(vardict["lev"], list):
-            levels = vardict["lev"]
-        elif isinstance(vardict["lev"], int):
-            levels = [vardict["lev"]]
-        else:
-            raise TypeError(f"Invalid level {vardict['lev']} specified for variable {var}")
+                raise TypeError(f"Invalid level {settings['lev']} specified for variable {var}")
 
-        if "Time" in uxds[var].dims:
+            # Both the output filename and the title are built from {lev}, so a transect
+            # that shares a name with a level would quietly land on top of it -- or, with
+            # the default plot:exists: rename, quietly land somewhere else
             for lev in levels:
-                for i in range(uxds.sizes["Time"]):
-                    timestring = "".join(uxds["xtime"].isel(Time=i).values.astype(str)).strip()
-                    args.append( (config_d,uxds,var,lev,i,timestring) )
-        else:
-            logger.debug(f"{var} has no time dimension")
-            timestring = "".join(uxds["xtime"].isel(Time=0).values.astype(str)).strip()
-            for lev in levels:
-                args.append( (config_d,uxds,var,lev,-1,timestring) )
+                if (clash := seen.get(str(lev))) is not None:
+                    raise ValueError(f"Variable {var} plots {lev!r} as both a {clash} and a "
+                                     f"{ptype}, so both figures would be named the same.\n"
+                                     "Rename the transect, or add {ptype} to plot:filename")
+                seen[str(lev)] = ptype
+
+            if "Time" in uxds[var].dims:
+                for lev in levels:
+                    for i in range(uxds.sizes["Time"]):
+                        timestring = "".join(uxds["xtime"].isel(Time=i).values.astype(str)).strip()
+                        args.append( (settings,uxds,var,lev,i,timestring,filepath) )
+            else:
+                logger.debug(f"{var} has no time dimension")
+                timestring = "".join(uxds["xtime"].isel(Time=0).values.astype(str)).strip()
+                for lev in levels:
+                    args.append( (settings,uxds,var,lev,-1,timestring,filepath) )
 
     return args
 
@@ -621,22 +763,20 @@ def setup_config(config: str, default: str="default_options.yaml") -> dict:
 
     # Perform consistency checks
 
-    if isinstance(expt_config["plot"]["title"],str):
-        raise TypeError("plot:title should be a dictionary, not a string\n"\
-                        "Adjust your config.yaml accordingly. See default_options.yaml for details.")
+    if not expt_config["dataset"].get("files"):
+        raise ValueError("dataset:files is mandatory: set it to the file(s) holding the data "
+                         "you want to plot. See config_plot.yaml.example for examples.")
 
-    if not (None in expt_config["plot"]["projection"]["lonrange"] or None in expt_config["plot"]["projection"]["latrange"]):
-        lon0=expt_config["plot"]["projection"]["lonrange"][0]
-        lon1=expt_config["plot"]["projection"]["lonrange"][1]
-        lat0=expt_config["plot"]["projection"]["latrange"][0]
-        lat1=expt_config["plot"]["projection"]["latrange"][1]
-        if lon0 >= lon1:
-            raise ValueError(f"plot:projection:lonrange first value {lon0} >= second value {lon1}")
-        if lat0 >= lat1:
-            raise ValueError(f"plot:projection:latrange first value {lat0} >= second value {lat1}")
+    check_plot_settings(expt_config["plot"], "plot:")
 
     logger.debug("Expanding references to other variables and Jinja templates")
     expt_config.dereference()
+
+    # Resolve each variable into one settings dictionary per kind of figure. This has to
+    # come after dereference(), which rebuilds every dictionary in the config as it renders
+    # them -- normalizing first would both re-render every copy and quietly undo the
+    # copying that keeps each block's settings its own.
+    normalize_plot_blocks(expt_config)
     return expt_config
 
 
@@ -670,7 +810,8 @@ if __name__ == "__main__":
     # Load all data to plot as a single dataset
     logger.info('Loading data from netcdf files')
     logger.debug(f"Memory usage:{proc.memory_info().rss/1024**2} MB")
-    dataset=load_full_dataset(expt_config["dataset"])
+    dataset=load_full_dataset(expt_config["dataset"],
+                              optional_vars=cross_section_vars(expt_config))
 
     logger.debug(f'{dataset=}')
 

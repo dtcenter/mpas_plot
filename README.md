@@ -86,6 +86,144 @@ plot_under: False
 This limits the color range to data between 5 and 75 (dBz), and `plot_under: False` specifies that data below vmin (5) should not be plotted at all; data above vmax (75) will be
 plotted if present but will have the same color value as 75.
 
+## Plot types
+
+By default a variable is plotted the way it always has been: a horizontal map of each of its
+vertical levels. To get a different kind of figure, or more than one kind from the same
+variable, give the variable a block named after the plot type. The types are `model_level`
+(the default map) and `cross_section`.
+
+```yaml
+dataset:
+  vars:
+    uReconstructZonal:
+      source: native
+      plot:                     # shared by every block below
+        colormap: RdBu_r
+      model_level:
+        lev: [0, 30, 54]
+        plot:
+          vmin: 0
+          vmax: 60
+      cross_section:
+        ymax: 12000
+        plot:
+          vmin: -20
+          vmax: 20
+```
+
+Inside a block, `lev` and `vertcoord` override the value given for the variable as a whole,
+`plot` overrides its plot settings, and every other key is a setting of that plot type.
+
+A plot type's settings can also be given once at the top level, in a section named after
+it, so that every variable picks them up. For model levels that is `lev`, which saves
+repeating the same list of levels under every variable:
+
+```yaml
+model_level:
+  lev: [0, 10, 20]      # unless a variable says otherwise
+```
+
+Levels are taken from the block if it sets them, otherwise from the variable, otherwise
+from `model_level:lev`, which defaults to `all`. Note that the settings controlling how a
+map looks — `projection:`, `coastlines:`, `edges:`, `pixel_ratio` and the rest — stay in
+`plot:` rather than moving here, since they describe drawing a map of the mesh rather than
+anything about model levels.
+
+Only the kinds of figure a variable asks for are produced: giving it a `cross_section:` block
+and nothing else gets sections and no maps, and both together need both blocks. A variable
+with no block at all is plotted as a map of every level, exactly as it was before plot types
+existed, so configs written before this still run unchanged.
+
+## Vertical cross-sections
+
+A cross-section plots every vertical level along a path across the domain. The paths are
+named, and are usually worth defining once at the top level so that several variables can
+share them:
+
+```yaml
+cross_section:
+  transects:
+    cascades:
+      - [45.0, -124.5]
+      - [45.0, -119.0]
+```
+
+Each transect is a list of `[latitude, longitude]` waypoints joined by great-circle arcs, so
+two waypoints give a straight section and more waypoints let it bend to follow a feature.
+
+Defining a transect does not by itself plot anything. A variable asks to be sectioned by
+carrying a `cross_section:` block, and an empty one means "all the transects defined above":
+
+```yaml
+dataset:
+  vars:
+    uReconstructZonal:
+      source: native
+      cross_section:              # every transect
+    w:
+      source: native
+      cross_section:
+        names: [cascades]         # just this one
+```
+
+So the geometry is written once and each variable picks the transects it wants by name. A
+variable can still define transects of its own, or change any other cross-section setting,
+in its own block; those are merged over the top-level ones, and `names` then selects from
+the result.
+
+One plot is produced per transect, per variable, per time; the `{lev}` substitution is the
+transect name for these plots, so the usual filename and title settings still give each
+transect its own output file. Use `{ptype}` in the filename to keep a variable's sections
+apart from its maps, and `{levlabel}` in a title to have it read "level 30" or "transect
+cascades" as appropriate.
+
+To see where a section is taken, a map can draw the line along it. Which lines a map draws is
+named the same way a variable picks the transects it is sectioned along:
+
+```yaml
+dataset:
+  vars:
+    theta:
+      source: native
+      model_level:
+        plot:
+          transects:
+            names: [cascades]     # or "all", or a single name
+            color: 'magenta'
+      cross_section:
+        names: [cascades]
+```
+
+This is a map decoration like `coastlines:` or `boundaries:`, so it lives in `plot:` and is
+ignored by the cross-section plots themselves. It draws the same great-circle path the
+section is sampled along, which also makes it obvious when a transect runs off the edge of a
+regional domain.
+
+Leaving `names:` unset draws nothing, so a map carries no transect lines unless it asks for
+them. The two `names:` settings are deliberately independent: `plot:transects:names` picks
+the lines a map draws, `cross_section:names` picks the transects the variable is sectioned
+along. They are usually the same list, but a map can show every transect in the domain while
+the variable is sectioned along only one of them. Set `plot:transects:names` at the top level
+to draw the same lines on every map.
+
+The vertical axis is geometric height in meters whenever the layer-interface heights can be
+read, and the model level index otherwise. Those heights live in the `zgrid` variable, which
+in MPAS is normally only in `init.nc` or `static.nc` — so set `dataset:gridfile` to one of
+those to get a height axis and a terrain silhouette. Use `vertical: height` to make a missing
+`zgrid` an error rather than silently falling back to model levels. See the `cross_section`
+section in `default_options.yaml` for the full list of settings.
+
+Sample points that fall outside the mesh are left blank rather than filled with the nearest
+value, so a section that runs off the edge of a regional domain shows where the data stops.
+
+By default each value is drawn filling exactly one model cell by one model level, with the
+layer interfaces from `zgrid` used as the cell edges. Set `shading: gouraud` for the smoother
+conventional look, bearing in mind that Matplotlib draws every quadrilateral as two shaded
+triangles, which shows up as a triangular texture wherever a cell is only a few pixels wide.
+MPAS levels thicken by a factor of twenty or so between the surface and 20 km, so that is
+usually where it appears.
+
 ## Limitations
 
 This plotting utility has no funding for technical support, and has several known limitations:

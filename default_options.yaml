@@ -23,7 +23,7 @@ dataset:
   # NOTE: Since only one gridfile can be specified, it is not possible to mix-and-match gridded
   #       and gridless files
   #
-  filename: ''
+  files: ''
   gridfile: ''
 
   # vars:
@@ -36,9 +36,9 @@ dataset:
   # list. If no 'lev' is provided, all levels will be plotted. Some specific examples of how to
   # specify various combinations of variable and levels are provided below:
 
-  # To plot the variable t2m at the 9th vertical level, use the following settings:
+  # To plot the variable theta at the 9th vertical level, use the following settings:
   #   vars:
-  #     t2m:
+  #     theta:
   #       source: native
   #       lev:
   #         - 9
@@ -50,9 +50,9 @@ dataset:
   #     rho:
   #       source: native
   #
-  # To plot the variable t2m at levels 1-6, and vorticity at all levels, use the following settings:
+  # To plot the variable theta at levels 1-6, and vorticity at all levels, use the following settings:
   #   vars:
-  #     t2m:
+  #     theta:
   #       source: native
   #       lev:
   #         - 1
@@ -63,6 +63,38 @@ dataset:
   #         - 6
   #     rho:
   #       source: native
+
+  # By default a variable is plotted as a horizontal map of each requested model level. To
+  # produce more than one kind of figure from the same variable, give it one block per plot
+  # type. The available plot types are:
+  #    model_level    A horizontal map of a single vertical level (what you get by default)
+  #    cross_section  A vertical cross-section along one or more named transects
+  #
+  # Anything written directly under the variable applies to every one of its blocks, so the
+  # settings a map and a section have in common need only be given once:
+  #
+  #   vars:
+  #     uReconstructZonal:
+  #       source: native
+  #       vertcoord: nVertLevels    # applies to both blocks below
+  #       plot:                     # so does this
+  #         colormap: RdBu_r
+  #       model_level:
+  #         lev:
+  #           - 0
+  #           - 30
+  #         plot:                   # overrides the plot: settings above
+  #           vmin: 0
+  #           vmax: 60
+  #       cross_section:
+  #         ymax: 12000             # a cross_section: setting (see the section at the end
+  #         plot:                   # of this file), overriding it for this variable only
+  #           vmin: -20
+  #           vmax: 20
+  #
+  # Inside a block, 'lev' and 'vertcoord' override the value given for the variable as a
+  # whole, 'plot' overrides its plot settings, and every other key is a setting of that plot
+  # type. A variable with no block at all is plotted as a model_level map, exactly as before.
 
   vars:
 
@@ -102,7 +134,9 @@ plot:
   # NOTE: for text fields such as filename, title, etc., some helpful variables are provided that
   # you can reference in the text string that will be substituted in the final output:
   # {var} = Variable name
-  # {lev} = Variable level
+  # {lev} = Variable level (for cross-section plots, the name of the transect)
+  # {levlabel} = "level <n>", or "transect <name>" for cross-section plots
+  # {ptype} = The kind of plot being produced (model_level, cross_section)
   # {varln} = Variable "long name" (not recommended for filenames since these often contain spaces)
   # {units} = Variable units
   # {filename} = Name of file being read for plotted data
@@ -115,7 +149,7 @@ plot:
   filename: '{var}_{lev}.png'
   format: null
   title:
-    text: 'Plot of {varln}, level {lev} for MPAS forecast, {date} {time}'
+    text: 'Plot of {varln}, {levlabel} for MPAS forecast, {date} {time}'
     fontsize: 8
   exists: rename
   dpi: 200
@@ -131,6 +165,12 @@ plot:
   # README.md for more information.
   #
   colormap: "viridis"
+
+  # colorbins:
+  # The number of discrete color steps in the colormap. Left unset, a standard Matplotlib
+  # colormap keeps its own resolution and a custom colormap from colormaps/<name>.yaml is
+  # built with 256. Set it to band the colors instead of shading them continuously.
+  colorbins: null
 
   # pixel_ratio:
   # This controls the quantity of pixels to sample in the rasterization process; higher numbers result
@@ -198,6 +238,41 @@ plot:
     color: 'black'
     linewidth: 0.5
 
+  # Settings for drawing the path of a cross-section transect on a map, so that a horizontal
+  # plot can show where a vertical section through it was taken. The transects themselves are
+  # defined in the top-level cross_section:transects section (or in a variable's own
+  # cross_section: block); these settings only control which of them are drawn, and how.
+  # Cross-section plots ignore this.
+  transects:
+    # names:
+    # Which transects to draw, named the same way a variable picks the ones it is sectioned
+    # along: a list of transect names, a single name, or "all" for every transect defined.
+    # Unset, as it is here, means draw none, so a map carries no transect lines unless it
+    # asks for them. For example:
+    #
+    #   dataset:
+    #     vars:
+    #       theta:
+    #         source: native
+    #         model_level:
+    #           plot:
+    #             transects:
+    #               names: [cascades]
+    #         cross_section:
+    #           names: [cascades]
+    #
+    # Note that this is a separate setting from cross_section:names: this one picks the lines
+    # a map draws, that one picks the transects a variable is sectioned along. They are
+    # usually the same list, but nothing requires it -- a map can show every transect in the
+    # domain while the variable is sectioned along only one of them.
+    names: null
+    color: 'magenta'
+    linewidth: 1.0
+    linestyle: '-'
+    # Write the name of each transect at the point where it starts
+    label: True
+    fontsize: 6
+
   # Settings for the plot's color bar
   colorbar:
     # orientation:
@@ -236,3 +311,140 @@ plot:
       - null
       - null
 
+# ---------------------------------------------------------------------------------------
+# Settings for model-level plots, shared by every variable plotted as one.
+#
+# This is the plot type a variable gets when it has no plot-type block at all, so these
+# settings apply to most configs without anything being written under dataset:vars. See the
+# comments above dataset:vars for the full structure.
+#
+# Note that the settings controlling how a map looks -- projection:, coastlines:,
+# boundaries:, lakes:, edges:, pixel_ratio, polycollection, periodic_bdy and transects: --
+# all live under plot: rather than here. They describe drawing a horizontal map of the mesh
+# rather than anything about model levels, so any future map-like plot type shares them.
+model_level:
+  # lev:
+  # Which vertical levels to plot, for every variable that does not choose its own: "all",
+  # a single level index, or a list of them. A variable overrides this with its own lev:,
+  # and a model_level: block overrides that, so a common set of levels can be written once
+  # here and varied only where it differs. For example:
+  #
+  #   model_level:
+  #     lev: [0, 10, 20]
+  #
+  #   dataset:
+  #     vars:
+  #       divergence:
+  #         source: native            # levels 0, 10 and 20
+  #       w:
+  #         source: native
+  #         vertcoord: nVertLevelsP1
+  #         lev: [0, 55]              # just these two
+  #
+  # Note that vertcoord: is NOT a model_level setting: cross-sections need it too, so it
+  # stays a property of the variable rather than of one kind of figure.
+  lev: all
+
+# ---------------------------------------------------------------------------------------
+# Settings for cross-section plots, shared by every variable that asks for one.
+#
+# A variable produces cross-sections when it has a "cross_section:" block of its own under
+# dataset:vars; any setting below can be repeated in that block to change it for just that
+# variable. See the comments above dataset:vars for the full structure.
+cross_section:
+  # transects:
+  # A dictionary of named transects to plot along. Each key is the name of a transect, and
+  # each value is a list of [latitude, longitude] waypoints in degrees. Consecutive waypoints
+  # are joined by great-circle arcs, so two waypoints give a straight section and additional
+  # waypoints let the section bend to follow a feature. For example:
+  #
+  #   transects:
+  #     cascades:
+  #       - [45.0, -124.5]
+  #       - [45.0, -119.0]
+  #     dogleg:
+  #       - [47.5, -124.0]
+  #       - [46.0, -121.5]
+  #       - [44.0, -121.0]
+  #
+  # One plot is produced per transect, per variable, per time. Note that the {lev}
+  # substitution described above is the transect name for cross-section plots, so the
+  # default filename and title settings still give each transect its own output file.
+  transects: {}
+
+  # names:
+  # Which of the transects above a variable should be plotted along: either "all", or a list
+  # of transect names. Transects are defined once, here, and each variable picks the ones it
+  # wants rather than repeating the geometry:
+  #
+  #   cross_section:
+  #     transects:
+  #       boulder: [[40.0, -107.0], [40.0, -104.0]]
+  #       dillon:  [[39.63, -107.0], [39.63, -104.0]]
+  #
+  #   dataset:
+  #     vars:
+  #       uReconstructZonal:
+  #         source: native
+  #         cross_section:          # every transect
+  #       w:
+  #         source: native
+  #         cross_section:
+  #           names: [boulder]      # just this one
+  names: all
+
+  # steps:
+  # The number of points sampled along the transect. For a transect with several segments
+  # these are shared out in proportion to the length of each segment. Higher values give a
+  # more detailed plot, at some cost in plotting speed.
+  steps: 200
+
+  # vertical:
+  # What to plot on the vertical axis. Valid options are:
+  #    auto    Geometric height if the height variable (see "zvar") can be read, otherwise
+  #            the model level index
+  #    height  Geometric height in meters; an error if the height variable cannot be read
+  #    level   Model vertical level index
+  vertical: auto
+
+  # zvar:
+  # The name of the variable holding the geometric height of each layer interface
+  # (dimensions nCells x nVertLevelsP1). It is read from the data files if present, and from
+  # dataset:gridfile if not; in MPAS it is normally only in the init.nc or static.nc file.
+  # Only used when "vertical" resolves to "height".
+  zvar: zgrid
+
+  # xaxis:
+  # What to plot on the horizontal axis. Valid options are:
+  #    distance  Distance along the transect, in km
+  #    lat       Latitude of each sample point
+  #    lon       Longitude of each sample point
+  xaxis: distance
+
+  # shading:
+  # How the sampled data is shaded between points; this is passed through to Matplotlib's
+  # pcolormesh. Valid options are:
+  #    flat     Each value fills exactly one model cell by one model level, using the layer
+  #             interfaces from "zvar" as the cell edges. This is the most literal picture
+  #             of the data, and the default
+  #    gouraud  Interpolates smoothly between sample points. This is the conventional look
+  #             for a cross-section, but Matplotlib draws each quadrilateral as two shaded
+  #             triangles, which shows up as a triangular texture wherever a cell is only a
+  #             few pixels wide -- usually in the thick levels aloft
+  #    nearest  Like flat, but with the cell edges inferred from the sample points instead
+  #             of taken from the model; Matplotlib warns that terrain-following heights are
+  #             not monotonic when it does this
+  shading: flat
+
+  # ymin, ymax:
+  # The range of the vertical axis, in meters for "height" or in level index for "level".
+  # Leave as null to fit the range of the data. Setting ymax is the usual way to crop a
+  # section to the lower troposphere, where most of the interesting structure is.
+  ymin: null
+  ymax: null
+
+  # Settings for shading in the terrain below the cross-section. Only drawn when the
+  # vertical axis is geometric height, since model levels have no terrain to draw.
+  terrain:
+    enable: True
+    color: 'darkgrey'
